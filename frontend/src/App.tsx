@@ -3,13 +3,14 @@ import * as control from "./api/control";
 import ControlPanel from "./components/ControlPanel";
 import RequestStream from "./components/RequestStream";
 import DistributedPanel from "./components/DistributedPanel";
+import RequestInspector from "./components/RequestInspector";
 import StatsPanel from "./components/StatsPanel";
 import Timeline from "./components/Timeline";
 import Visualizer from "./components/visualizers";
 import { defaultConfig } from "./state/defaults";
 import { StreamStore } from "./state/streamStore";
 import { useStream } from "./state/useStream";
-import type { AlgorithmKey, AlgorithmMeta, RunConfig } from "./types";
+import type { AlgorithmKey, AlgorithmMeta, DecisionEvent, RunConfig } from "./types";
 
 export default function App() {
   const store = useRef(new StreamStore()).current;
@@ -19,6 +20,7 @@ export default function App() {
   const [config, setConfig] = useState<RunConfig | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<DecisionEvent | null>(null);
 
   const running = sessionId !== null;
 
@@ -157,10 +159,20 @@ export default function App() {
             <h2 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
               Request stream
             </h2>
-            <RequestStream decisions={snapshot.decisions} />
+            <RequestStream
+              decisions={snapshot.decisions}
+              clientCount={config?.client_count ?? 1}
+              onSelect={setSelected}
+            />
           </div>
         </section>
       </div>
+
+      <RequestInspector
+        decision={selected}
+        algorithms={algorithms}
+        onClose={() => setSelected(null)}
+      />
 
       <div className="h-[180px] border-t border-zinc-800 px-4 py-2">
         <h2 className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">

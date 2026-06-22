@@ -99,6 +99,21 @@ try {
     await sleep(300);
   }
 
+  // Optional client count (sets the Clients range slider).
+  if (process.env.CLIENTS) {
+    await send("Runtime.evaluate", {
+      expression: `(() => {
+        const inp = [...document.querySelectorAll('input[type=range]')]
+          .find(i => i.closest('label')?.textContent.includes('Clients'));
+        if (!inp) return;
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+        setter.call(inp, ${JSON.stringify(process.env.CLIENTS)});
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+      })()`,
+    });
+    await sleep(150);
+  }
+
   // Optional traffic pattern (button label, e.g. "Steady").
   if (process.env.PATTERN) {
     await send("Runtime.evaluate", {
@@ -129,6 +144,17 @@ try {
   });
 
   await sleep(Number(process.env.WAIT ?? 4500)); // let the run animate
+
+  // Optional: open the Request Inspector by clicking the most recent chip.
+  if (process.env.INSPECT) {
+    await send("Runtime.evaluate", {
+      expression: `(() => {
+        const chip = [...document.querySelectorAll('button')].find(b => b.className.includes('h-4 w-4'));
+        chip?.click();
+      })()`,
+    });
+    await sleep(500);
+  }
 
   const { data } = await send("Page.captureScreenshot", { format: "png" });
   writeFileSync(OUT, Buffer.from(data, "base64"));

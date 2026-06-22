@@ -1,9 +1,10 @@
 import type { AlgorithmKey, AlgorithmMeta, Pattern, RunConfig } from "../types";
 
-// Patterns the backend honors today (steady + burst); ramp/spike arrive in M6.
 const PATTERNS: { value: Pattern; label: string }[] = [
   { value: "steady", label: "Steady" },
   { value: "burst", label: "Burst" },
+  { value: "ramp", label: "Ramp" },
+  { value: "spike", label: "Spike" },
 ];
 
 interface Props {

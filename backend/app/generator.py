@@ -23,6 +23,14 @@ from .limiters.base import Decision, RateLimiter
 _BURST_PERIOD_S = 2.0
 _BURST_ACTIVE_S = 0.25
 
+# Ramp: linearly climb from 10% to 100% of target RPS over this duration, then hold.
+_RAMP_DURATION_S = 15.0
+
+# Spike: mostly steady, with a brief high surge once per period.
+_SPIKE_PERIOD_S = 8.0
+_SPIKE_ACTIVE_S = 0.3
+_SPIKE_MULT = 6.0
+
 # Called with (decision_event_dict, decisions) for each fired request.
 OnDecision = Callable[[dict, list[Decision]], Awaitable[None]]
 
@@ -43,14 +51,28 @@ class LoadGenerator:
     def _next_delay(self, now: float) -> float:
         """Seconds to sleep before the next request, per the current pattern/rps."""
         rps = max(self.config.rps, 0.1)
-        if self.config.pattern == "burst":
-            phase = (now - self._start) % _BURST_PERIOD_S
+        pattern = self.config.pattern
+        elapsed = now - self._start
+
+        if pattern == "burst":
+            phase = elapsed % _BURST_PERIOD_S
             if phase < _BURST_ACTIVE_S:
                 burst_rps = rps * _BURST_PERIOD_S / _BURST_ACTIVE_S
                 return 1.0 / burst_rps
             # Idle until the next burst window opens.
             return _BURST_PERIOD_S - phase
-        # steady (and the M1 default for any other pattern)
+
+        if pattern == "ramp":
+            frac = min(1.0, 0.1 + 0.9 * elapsed / _RAMP_DURATION_S)
+            return 1.0 / (rps * frac)
+
+        if pattern == "spike":
+            phase = elapsed % _SPIKE_PERIOD_S
+            if phase < _SPIKE_ACTIVE_S:
+                return 1.0 / (rps * _SPIKE_MULT)
+            return 1.0 / rps
+
+        # steady
         return 1.0 / rps
 
     async def _fire(self, now: float) -> None:
