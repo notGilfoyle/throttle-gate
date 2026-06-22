@@ -78,6 +78,27 @@ try {
     await sleep(300);
   }
 
+  // Optionally enable compare mode and check a set of algorithm labels.
+  // COMPARE is a comma-separated list of algorithm display labels.
+  const compare = process.env.COMPARE;
+  if (compare) {
+    const labels = compare.split(",").map((s) => s.trim());
+    await send("Runtime.evaluate", {
+      expression: `[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Compare')?.click()`,
+    });
+    await sleep(300);
+    await send("Runtime.evaluate", {
+      expression: `(() => {
+        const want = new Set(${JSON.stringify(labels)});
+        document.querySelectorAll('input[type=checkbox]').forEach(cb => {
+          const txt = cb.closest('label')?.textContent.trim();
+          if (cb.checked !== want.has(txt)) cb.click();
+        });
+      })()`,
+    });
+    await sleep(300);
+  }
+
   // Click the Start button.
   await send("Runtime.evaluate", {
     expression: `[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Start')?.click()`,

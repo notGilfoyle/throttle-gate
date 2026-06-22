@@ -26,6 +26,7 @@ export default function ControlPanel({
   onReset,
 }: Props) {
   const active = algorithms.find((a) => a.key === config.algorithm);
+  const compareMode = config.compare.length >= 2;
 
   const setParam = (name: string, value: number) =>
     onChange({
@@ -36,34 +37,102 @@ export default function ControlPanel({
       },
     });
 
+  const toggleCompare = (on: boolean) => {
+    if (on) {
+      // Seed with the current algorithm plus one more distinct algorithm.
+      const second = algorithms.find((a) => a.key !== config.algorithm)?.key;
+      onChange({ ...config, compare: second ? [config.algorithm, second] : [] });
+    } else {
+      onChange({ ...config, compare: [] });
+    }
+  };
+
+  const toggleAlgo = (key: AlgorithmKey) => {
+    const has = config.compare.includes(key);
+    const next = has ? config.compare.filter((k) => k !== key) : [...config.compare, key];
+    onChange({ ...config, compare: next });
+  };
+
   return (
     <div className="flex flex-col gap-5">
-      <Field label="Algorithm">
-        <select
-          className="select"
-          value={config.algorithm}
-          onChange={(e) => onChange({ ...config, algorithm: e.target.value as AlgorithmKey })}
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={() => toggleCompare(false)}
+          className={`rounded border px-2 py-1.5 text-sm ${
+            !compareMode
+              ? "border-emerald-500 bg-emerald-500/10 text-emerald-300"
+              : "border-zinc-700 text-zinc-300 hover:border-zinc-600"
+          }`}
         >
-          {algorithms.map((a) => (
-            <option key={a.key} value={a.key}>
-              {a.label}
-            </option>
-          ))}
-        </select>
-        {active && <p className="mt-1.5 text-xs leading-snug text-zinc-500">{active.description}</p>}
-      </Field>
+          Single
+        </button>
+        <button
+          onClick={() => toggleCompare(true)}
+          className={`rounded border px-2 py-1.5 text-sm ${
+            compareMode
+              ? "border-sky-500 bg-sky-500/10 text-sky-300"
+              : "border-zinc-700 text-zinc-300 hover:border-zinc-600"
+          }`}
+        >
+          Compare
+        </button>
+      </div>
 
-      {active?.params.map((p) => (
-        <Slider
-          key={p.name}
-          label={p.label}
-          min={p.min}
-          max={p.max}
-          step={p.step}
-          value={config.params[config.algorithm]?.[p.name] ?? p.default}
-          onChange={(v) => setParam(p.name, v)}
-        />
-      ))}
+      {compareMode ? (
+        <div>
+          <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+            Algorithms to compare
+          </span>
+          <div className="flex flex-col gap-1.5">
+            {algorithms.map((a) => {
+              const checked = config.compare.includes(a.key);
+              return (
+                <label key={a.key} className="flex cursor-pointer items-center gap-2 text-sm text-zinc-300">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleAlgo(a.key)}
+                    className="accent-sky-500"
+                  />
+                  {a.label}
+                </label>
+              );
+            })}
+          </div>
+          {config.compare.length < 2 && (
+            <p className="mt-1.5 text-xs text-amber-400/80">Pick at least two.</p>
+          )}
+        </div>
+      ) : (
+        <>
+          <Field label="Algorithm">
+            <select
+              className="select"
+              value={config.algorithm}
+              onChange={(e) => onChange({ ...config, algorithm: e.target.value as AlgorithmKey })}
+            >
+              {algorithms.map((a) => (
+                <option key={a.key} value={a.key}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
+            {active && <p className="mt-1.5 text-xs leading-snug text-zinc-500">{active.description}</p>}
+          </Field>
+
+          {active?.params.map((p) => (
+            <Slider
+              key={p.name}
+              label={p.label}
+              min={p.min}
+              max={p.max}
+              step={p.step}
+              value={config.params[config.algorithm]?.[p.name] ?? p.default}
+              onChange={(v) => setParam(p.name, v)}
+            />
+          ))}
+        </>
+      )}
 
       <hr className="border-zinc-800" />
 

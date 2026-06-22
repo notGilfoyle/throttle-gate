@@ -13,11 +13,18 @@ import type {
 } from "../types";
 
 const MAX_CHIPS = 150;
+const MAX_HISTORY = 80; // ~40s of stats at 500ms cadence
 
 export interface AlgoLatest {
   ts: number;
   allowed: boolean;
   state: Record<string, number | number[]>;
+}
+
+export interface StatsPoint {
+  t: number; // server epoch seconds
+  throughputByAlgo: Record<string, number>; // allowed/s per algorithm
+  rpsIn: number;
 }
 
 export interface StreamSnapshot {
@@ -27,6 +34,7 @@ export interface StreamSnapshot {
   statsByAlgo: Record<string, AlgoStats>;
   rpsIn: number;
   latestByAlgo: Record<string, AlgoLatest>;
+  statsHistory: StatsPoint[]; // rolling, for the timeline
 }
 
 const EMPTY: StreamSnapshot = {
@@ -36,6 +44,7 @@ const EMPTY: StreamSnapshot = {
   statsByAlgo: {},
   rpsIn: 0,
   latestByAlgo: {},
+  statsHistory: [],
 };
 
 export class StreamStore {
@@ -123,6 +132,19 @@ export class StreamStore {
       }
     }
 
+    let statsHistory = prev.statsHistory;
+    if (this.pendingStats) {
+      const s = this.pendingStats;
+      const point: StatsPoint = {
+        t: s.ts,
+        rpsIn: s.rps_in,
+        throughputByAlgo: Object.fromEntries(
+          Object.entries(s.per_algorithm).map(([algo, v]) => [algo, v.throughput]),
+        ),
+      };
+      statsHistory = [...prev.statsHistory, point].slice(-MAX_HISTORY);
+    }
+
     this.snapshot = {
       status: this.pendingStatus ?? prev.status,
       workerId: this.pendingWorkerId ?? prev.workerId,
@@ -130,6 +152,7 @@ export class StreamStore {
       statsByAlgo: this.pendingStats?.per_algorithm ?? prev.statsByAlgo,
       rpsIn: this.pendingStats?.rps_in ?? prev.rpsIn,
       latestByAlgo,
+      statsHistory,
     };
 
     this.clearBuffers();
