@@ -11,10 +11,18 @@ import redis.asyncio as redis
 
 from ..config import AlgorithmKey
 from .base import Decision, RateLimiter
+from .fixed_window import FixedWindowLimiter
+from .leaky_bucket import LeakyBucketLimiter
+from .sliding_counter import SlidingCounterLimiter
+from .sliding_log import SlidingLogLimiter
 from .token_bucket import TokenBucketLimiter
 
 LIMITER_CLASSES: dict[str, type[RateLimiter]] = {
     "token_bucket": TokenBucketLimiter,
+    "leaky_bucket": LeakyBucketLimiter,
+    "fixed_window": FixedWindowLimiter,
+    "sliding_log": SlidingLogLimiter,
+    "sliding_counter": SlidingCounterLimiter,
 }
 
 
