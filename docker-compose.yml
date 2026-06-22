@@ -1,0 +1,39 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build: ./backend
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./backend/app
+          target: /app/app
+
+  frontend:
+    build: ./frontend
+    environment:
+      VITE_API_TARGET: http://backend:8000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend/src
+          target: /app/src

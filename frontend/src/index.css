@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+@layer components {
+  .btn {
+    @apply rounded px-3 py-2 text-sm font-medium text-white transition-colors disabled:opacity-50;
+  }
+  .select {
+    @apply w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100;
+  }
+}
