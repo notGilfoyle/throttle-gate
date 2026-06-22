@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
+from typing import Literal
 
 import redis.asyncio as redis
 from fastapi import FastAPI, HTTPException
@@ -31,7 +32,8 @@ REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Open Redis + build limiters for the app's lifetime."""
-    app.state.redis = redis.from_url(REDIS_URL, decode_responses=True)
+    # Pool sized for the concurrent /api/gate demo (many simultaneous requests).
+    app.state.redis = redis.from_url(REDIS_URL, decode_responses=True, max_connections=128)
     app.state.sessions = SessionManager(app.state.redis)
     await app.state.sessions.setup()
     try:
@@ -63,6 +65,15 @@ class SessionRef(BaseModel):
     session_id: str
 
 
+class GateRequest(BaseModel):
+    """A single request to evaluate against the limiter (real-replica demo)."""
+
+    algorithm: AlgorithmKey = "token_bucket"
+    client_id: str = "client-1"
+    mode: Literal["shared", "local"] = "shared"
+    params: dict | None = None
+
+
 class ConfigPatch(BaseModel):
     """Partial, live update of a running session's config (PRD §7.1)."""
 
@@ -90,6 +101,28 @@ def _require_session(session_id: str):
 async def healthz() -> dict[str, str]:
     pong = await app.state.redis.ping()
     return {"status": "ok", "redis": "up" if pong else "down", "worker_id": WORKER_ID}
+
+
+@app.post("/api/gate")
+async def gate(req: GateRequest) -> dict:
+    """Evaluate one request against the limiter — the protected endpoint for the
+    real multi-replica demo (PRD §10). In `local` mode this process namespaces
+    its state by `worker_id` (isolated per replica); in `shared` mode all
+    replicas share the key. Round-robin two replicas behind a proxy and compare.
+    """
+    limiter = app.state.sessions.limiters.get(req.algorithm)
+    if limiter is None:
+        raise HTTPException(status_code=400, detail=f"unknown algorithm: {req.algorithm}")
+    run_params = RunParams(**{req.algorithm: req.params}) if req.params else RunParams()
+    params = run_params.for_algorithm(req.algorithm)
+    node = WORKER_ID if req.mode == "local" else None
+    decision = await limiter.check(req.client_id, params, node=node)
+    return {
+        "allowed": decision.allowed,
+        "status": decision.status,
+        "worker_id": WORKER_ID,
+        "state": decision.state,
+    }
 
 
 @app.get("/api/algorithms")
