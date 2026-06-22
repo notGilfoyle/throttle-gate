@@ -58,13 +58,21 @@ class LoadGenerator:
         self._seq += 1
         client_id = f"client-{(self._seq % self.config.client_count) + 1}"
 
+        # Distributed demo: round-robin this request to a replica. In `local` mode
+        # the replica's state is isolated (a per-node key); in `shared` mode all
+        # replicas share state (node=None). Round-robin still applies in shared
+        # mode so the "handled by" attribution is shown either way.
+        dist = self.config.distributed
+        replica = self._seq % dist.replicas if dist.enabled else None
+        node = f"r{replica}" if (dist.enabled and dist.mode == "local") else None
+
         # Same request evaluated against every active algorithm (compare mode in M4
         # produces >1 result; single mode produces exactly one).
         results: list[Decision] = []
         for algo in self.config.active_algorithms():
             limiter = self.limiters[algo]
             params = self.config.params.for_algorithm(algo)
-            results.append(await limiter.check(client_id, params, now))
+            results.append(await limiter.check(client_id, params, now, node))
 
         event = {
             "type": "decision",
@@ -73,6 +81,8 @@ class LoadGenerator:
             "ts": now,
             "results": [d.model_dump() for d in results],
         }
+        if replica is not None:
+            event["replica"] = replica
         await self.on_decision(event, results)
 
     async def run(self, stop: asyncio.Event) -> None:

@@ -44,8 +44,20 @@ class RateLimiter(ABC):
     async def setup(self) -> None:
         """Register Lua scripts / warm caches. Override as needed; default no-op."""
 
-    def redis_key(self, client_id: str) -> str:
-        return f"{self.key}:{client_id}"
+    def state_key(self, client_id: str, node: str | None = None, suffix: object = None) -> str:
+        """Build the Redis key for a client's state.
+
+        `node` namespaces the state to one replica (distributed *local* mode);
+        when None, all replicas share the key (distributed *shared* mode, and the
+        non-distributed default). `suffix` carries e.g. a window index.
+        """
+        parts = [self.key]
+        if node:
+            parts.append(node)
+        parts.append(client_id)
+        if suffix is not None:
+            parts.append(str(suffix))
+        return ":".join(parts)
 
     def load_script(self, filename: str):
         """Register a Lua script from `scripts/`, returning a runnable handle."""
@@ -54,18 +66,22 @@ class RateLimiter(ABC):
 
     @abstractmethod
     async def evaluate(
-        self, client_id: str, params: BaseModel, now: float
+        self, client_id: str, params: BaseModel, now: float, node: str | None = None
     ) -> tuple[bool, dict, float | None]:
         """Run the algorithm. Returns (allowed, state, retry_after_seconds)."""
 
     async def check(
-        self, client_id: str, params: BaseModel, now: float | None = None
+        self,
+        client_id: str,
+        params: BaseModel,
+        now: float | None = None,
+        node: str | None = None,
     ) -> Decision:
         """Evaluate one request, timing the limiter call for `latency_ms`."""
         if now is None:
             now = time.time()
         t0 = time.perf_counter()
-        allowed, state, retry_after = await self.evaluate(client_id, params, now)
+        allowed, state, retry_after = await self.evaluate(client_id, params, now, node)
         latency_ms = round((time.perf_counter() - t0) * 1000, 3)
         return Decision(
             algorithm=self.key,

@@ -15,11 +15,11 @@ class SlidingLogLimiter(RateLimiter):
         self._script = self.load_script("sliding_log.lua")
 
     async def evaluate(
-        self, client_id: str, params: SlidingLogParams, now: float
+        self, client_id: str, params: SlidingLogParams, now: float, node: str | None = None
     ) -> tuple[bool, dict, float | None]:
         member = f"{now:.6f}:{uuid.uuid4().hex[:8]}"  # unique per request
         res = await self._script(
-            keys=[self.redis_key(client_id)],
+            keys=[self.state_key(client_id, node)],
             args=[now, params.window_s, params.limit, member],
         )
         allowed = bool(int(res[0]))

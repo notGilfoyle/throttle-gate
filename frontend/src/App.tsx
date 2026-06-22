@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as control from "./api/control";
 import ControlPanel from "./components/ControlPanel";
 import RequestStream from "./components/RequestStream";
+import DistributedPanel from "./components/DistributedPanel";
 import StatsPanel from "./components/StatsPanel";
 import Timeline from "./components/Timeline";
 import Visualizer from "./components/visualizers";
@@ -115,7 +116,16 @@ export default function App() {
           )}
         </section>
 
-        <section className="flex flex-row flex-wrap items-center justify-center gap-6 overflow-auto p-4">
+        <section className="flex flex-col items-center justify-center gap-6 overflow-auto p-4">
+          {config?.distributed.enabled && (
+            <DistributedPanel
+              config={config}
+              algorithm={activeAlgorithms[0]}
+              observed={snapshot.statsByAlgo[activeAlgorithms[0]]?.throughput ?? 0}
+              decisions={snapshot.decisions}
+            />
+          )}
+          <div className="flex flex-row flex-wrap items-center justify-center gap-6">
           {activeAlgorithms.map((algo) => (
             <div key={algo} className="flex flex-col items-center gap-2">
               {compareMode && (
@@ -126,6 +136,7 @@ export default function App() {
               <Visualizer algorithm={algo} latest={snapshot.latestByAlgo[algo]} />
             </div>
           ))}
+          </div>
         </section>
 
         <section className="flex flex-col gap-4 overflow-hidden border-l border-zinc-800 p-4">

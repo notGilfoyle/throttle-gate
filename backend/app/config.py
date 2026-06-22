@@ -71,6 +71,19 @@ class RunParams(BaseModel):
 # ── Run configuration ───────────────────────────────────────────────────────
 
 
+class DistributedConfig(BaseModel):
+    """Distributed-mode demo settings (PRD §10).
+
+    `shared` keeps limiter state in one place (all replicas share a key);
+    `local` gives each replica isolated state, so the effective global limit is
+    multiplied by `replicas` — the race the demo exposes.
+    """
+
+    enabled: bool = False
+    replicas: int = Field(default=2, ge=2, le=4)
+    mode: Literal["shared", "local"] = "shared"
+
+
 class RunConfig(BaseModel):
     """Full configuration for a load-generation session (PRD §9.1)."""
 
@@ -81,6 +94,7 @@ class RunConfig(BaseModel):
     pattern: Pattern = "steady"
     client_count: int = Field(default=1, ge=1, le=16)
     params: RunParams = Field(default_factory=RunParams)
+    distributed: DistributedConfig = Field(default_factory=DistributedConfig)
 
     def active_algorithms(self) -> list[AlgorithmKey]:
         """Algorithms to evaluate each request against.

@@ -20,5 +20,6 @@ export function defaultConfig(algorithms: AlgorithmMeta[]): RunConfig {
     pattern: "burst",
     client_count: 1,
     params: defaultParams(algorithms),
+    distributed: { enabled: false, replicas: 2, mode: "shared" },
   };
 }

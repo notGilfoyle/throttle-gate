@@ -172,6 +172,58 @@ export default function ControlPanel({
         onChange={(v) => onChange({ ...config, client_count: v })}
       />
 
+      <hr className="border-zinc-800" />
+
+      <div>
+        <label className="flex cursor-pointer items-center justify-between">
+          <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+            Distributed
+          </span>
+          <input
+            type="checkbox"
+            checked={config.distributed.enabled}
+            onChange={(e) =>
+              onChange({ ...config, distributed: { ...config.distributed, enabled: e.target.checked } })
+            }
+            className="accent-sky-500"
+          />
+        </label>
+
+        {config.distributed.enabled && (
+          <div className="mt-3 flex flex-col gap-3">
+            <Slider
+              label="Replicas"
+              min={2}
+              max={4}
+              step={1}
+              value={config.distributed.replicas}
+              onChange={(v) =>
+                onChange({ ...config, distributed: { ...config.distributed, replicas: v } })
+              }
+            />
+            <div className="grid grid-cols-2 gap-2">
+              {(["shared", "local"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() =>
+                    onChange({ ...config, distributed: { ...config.distributed, mode: m } })
+                  }
+                  className={`rounded border px-2 py-1.5 text-xs ${
+                    config.distributed.mode === m
+                      ? m === "shared"
+                        ? "border-emerald-500 bg-emerald-500/10 text-emerald-300"
+                        : "border-red-500 bg-red-500/10 text-red-300"
+                      : "border-zinc-700 text-zinc-300 hover:border-zinc-600"
+                  }`}
+                >
+                  {m === "shared" ? "Shared Redis" : "Local memory"}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="mt-1 flex flex-col gap-2">
         {running ? (
           <button onClick={onStop} className="btn bg-amber-600 hover:bg-amber-500">

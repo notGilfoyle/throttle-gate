@@ -99,6 +99,30 @@ try {
     await sleep(300);
   }
 
+  // Optional traffic pattern (button label, e.g. "Steady").
+  if (process.env.PATTERN) {
+    await send("Runtime.evaluate", {
+      expression: `[...document.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(process.env.PATTERN)})?.click()`,
+    });
+    await sleep(150);
+  }
+
+  // Optional distributed mode: DIST = "shared" | "local".
+  if (process.env.DIST) {
+    await send("Runtime.evaluate", {
+      expression: `document.querySelectorAll('input[type=checkbox]').forEach(cb => {
+        const t = cb.closest('label')?.textContent.trim();
+        if (t && t.includes('Distributed') && !cb.checked) cb.click();
+      })`,
+    });
+    await sleep(300);
+    const label = process.env.DIST === "local" ? "Local memory" : "Shared Redis";
+    await send("Runtime.evaluate", {
+      expression: `[...document.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(label)})?.click()`,
+    });
+    await sleep(300);
+  }
+
   // Click the Start button.
   await send("Runtime.evaluate", {
     expression: `[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Start')?.click()`,

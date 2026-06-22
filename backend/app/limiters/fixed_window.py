@@ -13,11 +13,11 @@ class FixedWindowLimiter(RateLimiter):
         self._script = self.load_script("fixed_window.lua")
 
     async def evaluate(
-        self, client_id: str, params: FixedWindowParams, now: float
+        self, client_id: str, params: FixedWindowParams, now: float, node: str | None = None
     ) -> tuple[bool, dict, float | None]:
         window_s = params.window_s
         idx = int(now // window_s)
-        rkey = f"{self.key}:{client_id}:{idx}"
+        rkey = self.state_key(client_id, node, idx)
         resets_in_s = round(window_s - (now - idx * window_s), 3)
 
         allowed_raw, count = await self._script(

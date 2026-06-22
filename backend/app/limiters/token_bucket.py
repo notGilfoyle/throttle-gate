@@ -13,10 +13,10 @@ class TokenBucketLimiter(RateLimiter):
         self._script = self.load_script("token_bucket.lua")
 
     async def evaluate(
-        self, client_id: str, params: TokenBucketParams, now: float
+        self, client_id: str, params: TokenBucketParams, now: float, node: str | None = None
     ) -> tuple[bool, dict, float | None]:
         allowed_raw, tokens_raw = await self._script(
-            keys=[self.redis_key(client_id)],
+            keys=[self.state_key(client_id, node)],
             args=[params.capacity, params.refill_rate, now, 1],
         )
         allowed = bool(int(allowed_raw))

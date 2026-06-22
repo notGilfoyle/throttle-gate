@@ -28,6 +28,12 @@ export interface AlgorithmMeta {
   state_fields: string[];
 }
 
+export interface DistributedConfig {
+  enabled: boolean;
+  replicas: number;
+  mode: "shared" | "local";
+}
+
 export interface RunConfig {
   algorithm: AlgorithmKey;
   compare: AlgorithmKey[];
@@ -35,6 +41,7 @@ export interface RunConfig {
   pattern: Pattern;
   client_count: number;
   params: Record<string, Record<string, number>>;
+  distributed: DistributedConfig;
 }
 
 // ── SSE events ────────────────────────────────────────────────────────────
@@ -54,6 +61,7 @@ export interface DecisionEvent {
   client_id: string;
   ts: number;
   results: DecisionResult[];
+  replica?: number; // distributed mode: which replica handled the request
 }
 
 export interface AlgoStats {

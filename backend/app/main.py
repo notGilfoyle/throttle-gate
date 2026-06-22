@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from .config import (
     ALGORITHMS,
     AlgorithmKey,
+    DistributedConfig,
     Pattern,
     RunConfig,
     RunParams,
@@ -72,6 +73,7 @@ class ConfigPatch(BaseModel):
     compare: list[AlgorithmKey] | None = None
     client_count: int | None = None
     params: RunParams | None = None
+    distributed: DistributedConfig | None = None
 
 
 def _require_session(session_id: str):
