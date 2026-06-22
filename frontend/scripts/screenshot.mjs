@@ -65,12 +65,25 @@ try {
   await send("Page.enable");
   await sleep(1500); // let React mount + fetch /api/algorithms
 
+  // Optionally select an algorithm in the dropdown before starting.
+  const algo = process.env.ALGO;
+  if (algo) {
+    await send("Runtime.evaluate", {
+      expression: `(() => {
+        const sel = document.querySelector('select');
+        sel.value = ${JSON.stringify(algo)};
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`,
+    });
+    await sleep(300);
+  }
+
   // Click the Start button.
   await send("Runtime.evaluate", {
     expression: `[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Start')?.click()`,
   });
 
-  await sleep(4500); // let a couple of burst cycles drain/refill the tank
+  await sleep(Number(process.env.WAIT ?? 4500)); // let the run animate
 
   const { data } = await send("Page.captureScreenshot", { format: "png" });
   writeFileSync(OUT, Buffer.from(data, "base64"));

@@ -3,7 +3,7 @@ import * as control from "./api/control";
 import ControlPanel from "./components/ControlPanel";
 import RequestStream from "./components/RequestStream";
 import StatsPanel from "./components/StatsPanel";
-import TokenBucketViz from "./components/visualizers/TokenBucketViz";
+import Visualizer from "./components/visualizers";
 import { defaultConfig } from "./state/defaults";
 import { StreamStore } from "./state/streamStore";
 import { useStream } from "./state/useStream";
@@ -72,7 +72,7 @@ export default function App() {
   };
 
   const activeStats = config ? snapshot.statsByAlgo[config.algorithm] : undefined;
-  const tokenLatest = snapshot.latestByAlgo["token_bucket"];
+  const activeLatest = config ? snapshot.latestByAlgo[config.algorithm] : undefined;
 
   return (
     <div className="flex h-full flex-col bg-zinc-950 text-zinc-100">
@@ -110,13 +110,7 @@ export default function App() {
         </section>
 
         <section className="flex flex-col items-center justify-center overflow-auto p-4">
-          {config?.algorithm === "token_bucket" ? (
-            <TokenBucketViz latest={tokenLatest} />
-          ) : (
-            <p className="text-sm text-zinc-600">
-              Visualizer for “{config?.algorithm}” arrives in Milestone 3.
-            </p>
-          )}
+          {config && <Visualizer algorithm={config.algorithm} latest={activeLatest} />}
         </section>
 
         <section className="flex flex-col gap-4 overflow-hidden border-l border-zinc-800 p-4">

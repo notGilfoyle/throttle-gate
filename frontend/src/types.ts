@@ -78,9 +78,39 @@ export interface HelloEvent {
   config: RunConfig;
 }
 
-// Token-bucket state shape (PRD §4) for the typed visualizer.
+// Per-algorithm state shapes (PRD §4) for the typed visualizers.
 export interface TokenBucketState {
   tokens: number;
   capacity: number;
   refill_rate: number;
+}
+
+export interface LeakyBucketState {
+  queue_depth: number;
+  capacity: number;
+  leak_rate: number;
+  est_wait_ms: number;
+}
+
+export interface FixedWindowState {
+  count: number;
+  limit: number;
+  window_s: number;
+  resets_in_s: number;
+}
+
+export interface SlidingLogState {
+  count: number;
+  limit: number;
+  window_s: number;
+  timestamps: number[];
+}
+
+export interface SlidingCounterState {
+  curr_count: number;
+  prev_count: number;
+  weight: number;
+  estimate: number;
+  limit: number;
+  window_s: number;
 }
