@@ -11,8 +11,8 @@ real allow/throttle traffic in the same visualizers.
 | [`fastapi/`](fastapi/) — ASGI middleware for FastAPI/Starlette | ✅ M7 |
 | [`express/`](express/) — Express/Connect middleware (Node 18+) | ✅ M8 |
 | [`nginx/`](nginx/) — `auth_request` (no app code) | ✅ M8 |
-| Envoy `ext_authz` | planned (M8) |
-| Cloudflare Worker | planned (M8) |
+| [`envoy/`](envoy/) — HTTP `ext_authz` (no app code) | ✅ M8 |
+| [`cloudflare/`](cloudflare/) — edge Worker | ✅ M8 |
 
 ## FastAPI quick start
 

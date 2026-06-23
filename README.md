@@ -96,8 +96,9 @@ allowed vs. throttled, by key and by route.
 - **Decision API:** `POST /v1/check {key, route}` → `200` / `429` with real
   `Retry-After` and `X-RateLimit-*` headers. Tune the limiter (algorithm + limits)
   live from the dashboard.
-- **Plug it in:** a ready FastAPI middleware (see [`adapters/`](adapters/)) — other
-  stacks (Express, nginx, Envoy, Cloudflare) are on the [roadmap](docs/throttle-gate_ROADMAP.md).
+- **Plug it in:** ready adapters for FastAPI, Express, nginx, Envoy, and
+  Cloudflare Workers (see [`adapters/`](adapters/)), or run the whole thing next
+  to your app with the [sidecar bundle](deploy/sidecar/).
 - **Try it:**
 
   ```bash
@@ -198,7 +199,7 @@ frontend/src/
   api/               REST control + EventSource wrapper
   state/             rAF-coalesced stream store
   components/        ControlPanel, RequestStream, Timeline, Inspector, visualizers/
-adapters/            plug-in clients (FastAPI, Express, nginx)
+adapters/            plug-in clients (FastAPI, Express, nginx, Envoy, Cloudflare)
 deploy/sidecar/      run the engine + dashboard + redis next to your app
 scripts/             distributed_demo.py, live_demo.py
 docker-compose.yml             frontend + backend + redis

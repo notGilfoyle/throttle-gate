@@ -42,21 +42,24 @@ in the existing dashboard.
 *Exit:* `python scripts/live_demo.py` throttles real requests and the dashboard
 shows them in real time.
 
-## M8 — More adapters & deploy story  ·  **in progress**
+## M8 — More adapters & deploy story  ·  **done** (engine-side fail-open deferred)
 
 Make "plug it in" true for the common stacks.
 
-- **Adapters:** Express/Node ✅ ([`adapters/express/`](../adapters/express/)),
-  nginx `auth_request` ✅ ([`adapters/nginx/`](../adapters/nginx/), via the
-  `/v1/authcheck` 204/403 endpoint), then Envoy `ext_authz` and a Cloudflare
-  Worker. Each just calls the gate.
+- **Adapters** — all call the gate; in-process middleware use `/v1/check`, proxy
+  gateways use `/v1/authcheck` (status mapping selected by `X-Authz-Mode`):
+  - FastAPI middleware ✅ ([`adapters/fastapi/`](../adapters/fastapi/))
+  - Express/Connect middleware ✅ ([`adapters/express/`](../adapters/express/))
+  - nginx `auth_request` ✅ ([`adapters/nginx/`](../adapters/nginx/)) — 204/403
+  - Envoy HTTP `ext_authz` ✅ ([`adapters/envoy/`](../adapters/envoy/)) — 200/429
+  - Cloudflare Worker ✅ ([`adapters/cloudflare/`](../adapters/cloudflare/))
 - **Standalone sidecar bundle** ✅ ([`deploy/sidecar/`](../deploy/sidecar/)) — the
   engine + dashboard + Redis next to your app; documented compose + env config.
-- **Fail-open vs fail-closed** when Redis/gate is unreachable — adapters do this
-  per-call today (`fail_open`); next, make it a first-class engine-side setting.
+- **Fail-open vs fail-closed** — every adapter does this per-call today
+  (`fail_open` / `failure_mode_allow`). *Deferred:* a first-class engine-side
+  setting (folds into M9's config work).
 
-*Exit:* a non-Python service can be rate-limited with one snippet + a sidecar.
-**Remaining:** Envoy + Cloudflare adapters; engine-side fail-open config.
+*Exit:* a non-Python service can be rate-limited with one snippet + a sidecar. ✅
 
 ## M9 — Policy engine
 

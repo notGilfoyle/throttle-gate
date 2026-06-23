@@ -213,23 +213,34 @@ async def authcheck(
     key: str | None = None,
     route: str = "*",
     x_ratelimit_key: str | None = Header(default=None),
+    x_api_key: str | None = Header(default=None),
     x_original_uri: str | None = Header(default=None),
+    x_authz_mode: str | None = Header(default=None),
 ) -> Response:
-    """Auth-subrequest variant for nginx `auth_request` and Envoy `ext_authz` (M8).
+    """Auth-subrequest variant for proxy gateways (M8): nginx `auth_request` and
+    Envoy `ext_authz`. They issue a subrequest and decide allow/deny from its
+    status, but disagree on which codes mean what — so the status mapping is
+    selected by the `X-Authz-Mode` header:
 
-    Those gateways issue a GET subrequest and only treat **2xx** (allow) or
-    **401/403** (deny) specially — a `429` body would become a `500`. So this
-    returns **204** when allowed and **403** when throttled, always with the
-    `X-RateLimit-*` / `Retry-After` headers. The proxy maps the 403 back to a
-    real `429` for the client (see `adapters/nginx/`).
+    - **default (nginx)** — `auth_request` only accepts `2xx` (allow) and
+      `401/403` (deny); anything else becomes a `500`. So: **204** allow /
+      **403** deny. The nginx config maps the 403 back to a real `429`.
+    - **`envoy`** — HTTP `ext_authz` treats only **200** as allow and forwards
+      the authz response (status/headers/body) straight to the client on deny.
+      So: **200** allow / **429** deny — the client gets a real `429` directly.
 
-    The key is taken from `?key=`, else the `X-RateLimit-Key` header; the route
-    from `?route=`, else nginx's `X-Original-URI`.
+    Either way the `X-RateLimit-*` / `Retry-After` headers are always set. Key is
+    taken from `?key=`, else `X-RateLimit-Key`, else `X-Api-Key`; route from
+    `?route=`, else the `X-Original-URI` header.
     """
-    resolved_key = key or x_ratelimit_key or "anonymous"
+    resolved_key = key or x_ratelimit_key or x_api_key or "anonymous"
     resolved_route = route if route != "*" else (x_original_uri or "*")
     decision, headers = await _live_check(resolved_key, resolved_route, None, None)
-    response = Response(status_code=204 if decision.allowed else 403)
+    if x_authz_mode == "envoy":
+        status = 200 if decision.allowed else 429
+    else:
+        status = 204 if decision.allowed else 403
+    response = Response(status_code=status)
     for name, value in headers.items():
         response.headers[name] = value
     return response
