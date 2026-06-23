@@ -44,6 +44,7 @@ export default function RequestInspector({ decision, algorithms, onClose }: Prop
         <dl className="mb-5 grid grid-cols-2 gap-2 text-xs">
           <Meta k="Client" v={decision.client_id} />
           <Meta k="Timestamp" v={new Date(decision.ts * 1000).toLocaleTimeString()} />
+          {decision.route && <Meta k="Route" v={decision.route} />}
           {decision.replica !== undefined && <Meta k="Replica" v={`r${decision.replica}`} />}
           <Meta k="Algorithms" v={String(decision.results.length)} />
         </dl>

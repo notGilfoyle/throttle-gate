@@ -17,6 +17,8 @@ export default defineConfig({
         // SSE needs the proxied connection kept open and unbuffered.
         ws: true,
       },
+      // Live-mode decision API (M7): /v1/live, /v1/check.
+      "/v1": { target: apiTarget, changeOrigin: true },
     },
   },
 });

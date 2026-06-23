@@ -7,11 +7,13 @@ the load generator; `/api/stream` carries the live decision/stats stream.
 from __future__ import annotations
 
 import os
+import time
+import uuid
 from contextlib import asynccontextmanager
 from typing import Literal
 
 import redis.asyncio as redis
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -24,6 +26,7 @@ from .config import (
     RunConfig,
     RunParams,
 )
+from .ratelimit_headers import ratelimit_headers
 from .sse import SessionManager, WORKER_ID, stream_events
 
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
@@ -71,6 +74,21 @@ class GateRequest(BaseModel):
     algorithm: AlgorithmKey = "token_bucket"
     client_id: str = "client-1"
     mode: Literal["shared", "local"] = "shared"
+    params: dict | None = None
+
+
+class CheckRequest(BaseModel):
+    """A real incoming request to rate-limit in Live mode (M7).
+
+    `key` is the rate-limit identity (API key, user id, or IP). `route` is an
+    optional grouping label shown in the dashboard. `algorithm`/`params` are
+    optional per-request overrides; by default the Live session's configured
+    limiter (set from the dashboard via `PATCH /api/config`) is used.
+    """
+
+    key: str = "anonymous"
+    route: str = "*"
+    algorithm: AlgorithmKey | None = None
     params: dict | None = None
 
 
@@ -125,6 +143,98 @@ async def gate(req: GateRequest) -> dict:
     }
 
 
+# ── Live mode (M7): real traffic in → dashboard ──────────────────────────────
+
+
+@app.get("/v1/live")
+async def live_info() -> dict:
+    """The Live session id + current limiter config. The dashboard subscribes to
+    `/api/stream?session_id=<id>` and tunes the limiter via `PATCH /api/config`."""
+    session = app.state.sessions.live()
+    return {"session_id": session.id, "config": session.config.model_dump()}
+
+
+async def _live_check(
+    key: str, route: str, algorithm: AlgorithmKey | None, params_override: dict | None
+):
+    """Evaluate one real request against the Live limiter and stream it to the
+    dashboard. Shared by the POST decision API and the GET auth endpoint."""
+    session = app.state.sessions.live()
+    algo = algorithm or session.config.algorithm
+    limiter = app.state.sessions.limiters.get(algo)
+    if limiter is None:
+        raise HTTPException(status_code=400, detail=f"unknown algorithm: {algo}")
+
+    if params_override:
+        params = RunParams(**{algo: params_override}).for_algorithm(algo)
+    else:
+        params = session.config.params.for_algorithm(algo)
+
+    now = time.time()
+    decision = await limiter.check(key, params, now)
+
+    # Stream this real decision into the dashboard's Live session.
+    event = {
+        "type": "decision",
+        "request_id": f"live_{uuid.uuid4().hex[:8]}",
+        "client_id": key,
+        "route": route,
+        "ts": now,
+        "results": [decision.model_dump()],
+    }
+    await session.record(event, [decision])
+    return decision, ratelimit_headers(decision)
+
+
+@app.post("/v1/check")
+async def check(req: CheckRequest, response: Response) -> dict:
+    """Rate-limit one real incoming request and stream it to the dashboard (M7).
+
+    Returns the same shape a real gateway needs: `429` status + `Retry-After` /
+    `X-RateLimit-*` headers on reject, `200` otherwise. A middleware in front of
+    the user's service calls this per request (see `adapters/`).
+    """
+    decision, headers = await _live_check(req.key, req.route, req.algorithm, req.params)
+    for name, value in headers.items():
+        response.headers[name] = value
+    response.status_code = decision.status
+    return {
+        "allowed": decision.allowed,
+        "status": decision.status,
+        "retry_after": decision.retry_after,
+        "limit": int(headers["X-RateLimit-Limit"]),
+        "remaining": int(headers["X-RateLimit-Remaining"]),
+    }
+
+
+@app.get("/v1/authcheck")
+async def authcheck(
+    response: Response,
+    key: str | None = None,
+    route: str = "*",
+    x_ratelimit_key: str | None = Header(default=None),
+    x_original_uri: str | None = Header(default=None),
+) -> Response:
+    """Auth-subrequest variant for nginx `auth_request` and Envoy `ext_authz` (M8).
+
+    Those gateways issue a GET subrequest and only treat **2xx** (allow) or
+    **401/403** (deny) specially — a `429` body would become a `500`. So this
+    returns **204** when allowed and **403** when throttled, always with the
+    `X-RateLimit-*` / `Retry-After` headers. The proxy maps the 403 back to a
+    real `429` for the client (see `adapters/nginx/`).
+
+    The key is taken from `?key=`, else the `X-RateLimit-Key` header; the route
+    from `?route=`, else nginx's `X-Original-URI`.
+    """
+    resolved_key = key or x_ratelimit_key or "anonymous"
+    resolved_route = route if route != "*" else (x_original_uri or "*")
+    decision, headers = await _live_check(resolved_key, resolved_route, None, None)
+    response = Response(status_code=204 if decision.allowed else 403)
+    for name, value in headers.items():
+        response.headers[name] = value
+    return response
+
+
 @app.get("/api/algorithms")
 async def algorithms() -> dict:
     """Static metadata the frontend uses to build its control panel."""
@@ -155,10 +265,12 @@ async def reset_sessions() -> dict:
 async def patch_config(patch: ConfigPatch) -> dict:
     session = _require_session(patch.session_id)
     # Mutate the existing config object in place so the running generator (which
-    # holds a reference to it) picks up changes without a restart.
-    updates = patch.model_dump(exclude_none=True, exclude={"session_id"})
-    for field, value in updates.items():
-        setattr(session.config, field, value)
+    # holds a reference to it) picks up changes without a restart. Assign the
+    # *parsed* attribute off `patch` (not a dumped dict) so typed fields like
+    # `params`/`distributed` stay Pydantic models, not plain dicts.
+    provided = patch.model_dump(exclude_none=True, exclude={"session_id"})
+    for field in provided:
+        setattr(session.config, field, getattr(patch, field))
     return {"status": "updated", "config": session.config.model_dump()}
 
 

@@ -30,6 +30,9 @@ than theoretical.
 - **Distributed mode** — the headline lesson: local (unshared) per-replica state
   breaches the global limit (~N×) while shared Redis state holds it. Demonstrated
   both live in-app and across two real backend replicas behind nginx.
+- **Live mode** — put it in front of a real service: a `POST /v1/check` decision
+  API + a FastAPI middleware adapter rate-limit real traffic and stream every
+  decision into the same dashboard. See [Live mode](#live-mode--rate-limit-your-real-traffic).
 - **Traffic patterns**: steady, burst, ramp, spike. **Per-client keying** with up
   to 8 simulated clients. **Request Inspector** showing the full HTTP picture
   (status, `Retry-After`, simulated `X-RateLimit-*` headers, latency, raw state).
@@ -80,6 +83,33 @@ This is demonstrated two ways:
 Click any request chip to see what a real rate-limited HTTP response looks like:
 
 ![Request Inspector](docs/screenshots/inspector.png)
+
+## Live mode — rate-limit your *real* traffic
+
+Beyond the synthetic generator, Throttle-Gate can sit in front of a real service.
+Switch the dashboard to **Live traffic**, point your server at the decision API,
+and every real request flows through the same visualizers — you watch live what's
+allowed vs. throttled, by key and by route.
+
+![Live mode](docs/screenshots/live.png)
+
+- **Decision API:** `POST /v1/check {key, route}` → `200` / `429` with real
+  `Retry-After` and `X-RateLimit-*` headers. Tune the limiter (algorithm + limits)
+  live from the dashboard.
+- **Plug it in:** a ready FastAPI middleware (see [`adapters/`](adapters/)) — other
+  stacks (Express, nginx, Envoy, Cloudflare) are on the [roadmap](docs/throttle-gate_ROADMAP.md).
+- **Try it:**
+
+  ```bash
+  docker compose up -d                 # backend on :8000, UI on :5173
+  python scripts/live_demo.py          # drive real traffic at /v1/check
+  # …then switch the dashboard to "Live traffic"
+  ```
+
+The inspector shows each real request's key, **route**, and the exact headers a
+client would receive:
+
+![Live inspector](docs/screenshots/live-inspector.png)
 
 ## Architecture
 
@@ -157,19 +187,25 @@ uv run pytest        # includes the naive-vs-Lua over-admission concurrency test
 
 ```
 backend/app/
-  main.py            FastAPI app, control plane, SSE, /api/gate
-  sse.py             SSE stream + session manager
+  main.py            FastAPI app, control plane, SSE, /api/gate, /v1/check + /v1/authcheck (live)
+  sse.py             SSE stream + session manager (incl. the live session)
   generator.py       asyncio load generator (steady/burst/ramp/spike)
   config.py          RunConfig + algorithm metadata
   stats.py           rolling aggregates
+  ratelimit_headers.py  X-RateLimit-* derivation for /v1/check
   limiters/          one module per algorithm + Lua scripts
 frontend/src/
   api/               REST control + EventSource wrapper
   state/             rAF-coalesced stream store
   components/        ControlPanel, RequestStream, Timeline, Inspector, visualizers/
+adapters/            plug-in clients (FastAPI, Express, nginx)
+deploy/sidecar/      run the engine + dashboard + redis next to your app
+scripts/             distributed_demo.py, live_demo.py
 docker-compose.yml             frontend + backend + redis
 docker-compose.distributed.yml two replicas + nginx
 ```
+
+See [`docs/throttle-gate_ROADMAP.md`](docs/throttle-gate_ROADMAP.md) for what's next (M7→M12).
 
 Built as a portfolio / interview-prep project — optimized for clarity,
 correctness, and visual explanation. See [`docs/throttle-gate_PRD.md`](docs/throttle-gate_PRD.md)

@@ -62,6 +62,7 @@ export interface DecisionEvent {
   ts: number;
   results: DecisionResult[];
   replica?: number; // distributed mode: which replica handled the request
+  route?: string; // live mode: the route the real request hit
 }
 
 export interface AlgoStats {

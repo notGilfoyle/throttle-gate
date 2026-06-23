@@ -30,6 +30,11 @@ export async function startSession(
   );
 }
 
+/** Live mode (M7): the persistent session real /v1/check traffic feeds. */
+export async function getLive(): Promise<{ session_id: string; config: RunConfig }> {
+  return json(await fetch(`${BASE.replace("/api", "")}/v1/live`));
+}
+
 export async function stopSession(session_id: string): Promise<void> {
   await json(
     await fetch(`${BASE}/session/stop`, {

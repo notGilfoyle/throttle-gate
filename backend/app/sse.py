@@ -25,6 +25,9 @@ from .stats import StatsAggregator
 
 WORKER_ID = uuid.uuid4().hex[:8]
 
+# The single, persistent Live-mode session real /v1/check traffic feeds (M7).
+LIVE_SESSION_ID = "live"
+
 _STATS_INTERVAL_S = 0.5
 _HEARTBEAT_S = 15.0
 _SUBSCRIBER_QUEUE_MAX = 2000  # bound memory; drop for slow consumers
@@ -37,17 +40,28 @@ def sse_format(event: dict) -> str:
 
 
 class Session:
-    def __init__(self, session_id: str, config: RunConfig, limiters: dict[str, RateLimiter]) -> None:
+    def __init__(
+        self,
+        session_id: str,
+        config: RunConfig,
+        limiters: dict[str, RateLimiter],
+        *,
+        live: bool = False,
+    ) -> None:
         self.id = session_id
         self.config = config
         self.stats = StatsAggregator()
         self.subscribers: set[asyncio.Queue] = set()
         self.running = False
+        # A "live" session has no synthetic generator: real requests feed it via
+        # `record()` (M7). It still runs the stats loop and fans out to the SSE
+        # subscribers exactly like a generated session.
+        self.live = live
 
         self._stop = asyncio.Event()
         self._gen_task: asyncio.Task | None = None
         self._stats_task: asyncio.Task | None = None
-        self._generator = LoadGenerator(config, limiters, self._on_decision)
+        self._generator = None if live else LoadGenerator(config, limiters, self._on_decision)
 
     # ── generation lifecycle ────────────────────────────────────────────────
 
@@ -56,8 +70,13 @@ class Session:
             return
         self._stop = asyncio.Event()
         self.running = True
-        self._gen_task = asyncio.create_task(self._generator.run(self._stop))
+        if self._generator is not None:
+            self._gen_task = asyncio.create_task(self._generator.run(self._stop))
         self._stats_task = asyncio.create_task(self._stats_loop())
+
+    async def record(self, event: dict, results: list[Decision]) -> None:
+        """Ingest one externally-evaluated request (Live mode) into the stream."""
+        await self._on_decision(event, results)
 
     async def stop(self) -> None:
         """Halt generation but keep the session (and limiter state) inspectable."""
@@ -106,6 +125,7 @@ class Session:
             "type": "hello",
             "session_id": self.id,
             "worker_id": WORKER_ID,
+            "live": self.live,
             "config": self.config.model_dump(),
         }
 
@@ -128,6 +148,16 @@ class SessionManager:
 
     def get(self, session_id: str) -> Session | None:
         return self.sessions.get(session_id)
+
+    def live(self) -> Session:
+        """Get-or-create the persistent Live-mode session (M7). Generator-less;
+        fed by real `/v1/check` traffic and tuned via `PATCH /api/config`."""
+        session = self.sessions.get(LIVE_SESSION_ID)
+        if session is None:
+            session = Session(LIVE_SESSION_ID, RunConfig(), self.limiters, live=True)
+            self.sessions[LIVE_SESSION_ID] = session
+            session.start()
+        return session
 
     async def stop_all(self) -> None:
         for session in list(self.sessions.values()):

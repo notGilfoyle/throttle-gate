@@ -21,8 +21,14 @@ export default function App() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<DecisionEvent | null>(null);
+  // "simulate" = synthetic load generator (v1); "live" = real /v1/check traffic (M7).
+  const [mode, setMode] = useState<"simulate" | "live">("simulate");
+  const [liveSessionId, setLiveSessionId] = useState<string | null>(null);
 
-  const running = sessionId !== null;
+  const live = mode === "live";
+  const running = live ? liveSessionId !== null : sessionId !== null;
+  // The session the store/config writes target right now.
+  const activeSessionId = live ? liveSessionId : sessionId;
 
   // Load algorithm metadata once; seed the default config from it.
   useEffect(() => {
@@ -39,7 +45,30 @@ export default function App() {
 
   const onChange = (next: RunConfig) => {
     setConfig(next);
-    if (sessionId) control.patchConfig(sessionId, next).catch((e) => setError(String(e)));
+    if (activeSessionId) control.patchConfig(activeSessionId, next).catch((e) => setError(String(e)));
+  };
+
+  // Switch between synthetic (simulate) and real-traffic (live) modes.
+  const switchMode = async (next: "simulate" | "live") => {
+    if (next === mode) return;
+    setError(null);
+    store.disconnect();
+    setSessionId(null);
+    if (next === "live") {
+      try {
+        const { session_id, config: liveConfig } = await control.getLive();
+        setLiveSessionId(session_id);
+        setConfig(liveConfig); // reflect the limiter the server is actually using
+        setMode("live");
+        store.connect(session_id);
+      } catch (e) {
+        setError(String(e));
+      }
+    } else {
+      setLiveSessionId(null);
+      setConfig(defaultConfig(algorithms));
+      setMode("simulate");
+    }
   };
 
   const onStart = async () => {
@@ -89,12 +118,37 @@ export default function App() {
         <h1 className="text-lg font-semibold tracking-tight">
           Throttle-Gate <span className="text-zinc-500">— Rate Limiting Visualizer</span>
         </h1>
-        <ConnBadge status={running ? snapshot.status : "idle"} workerId={snapshot.workerId} />
+        <div className="flex items-center gap-4">
+          <div className="flex rounded border border-zinc-700 p-0.5 text-xs">
+            {(["simulate", "live"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => switchMode(m)}
+                className={`rounded px-2.5 py-1 capitalize ${
+                  mode === m ? "bg-zinc-700 text-zinc-100" : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                {m === "live" ? "Live traffic" : "Simulate"}
+              </button>
+            ))}
+          </div>
+          <ConnBadge status={running ? snapshot.status : "idle"} workerId={snapshot.workerId} />
+        </div>
       </header>
 
       {error && (
         <div className="border-b border-red-900 bg-red-950/60 px-4 py-1.5 text-xs text-red-300">
           {error}
+        </div>
+      )}
+
+      {live && (
+        <div className="border-b border-sky-900 bg-sky-950/40 px-4 py-1.5 text-xs text-sky-200">
+          Live mode — point your server at the decision API. Try it:{" "}
+          <code className="rounded bg-sky-950 px-1.5 py-0.5 font-mono text-sky-300">
+            curl -X POST localhost:8000/v1/check -H 'content-type: application/json' -d
+            '{`{"key":"user-42","route":"/api"}`}'
+          </code>
         </div>
       )}
 
@@ -108,6 +162,7 @@ export default function App() {
               algorithms={algorithms}
               config={config}
               running={running}
+              live={live}
               onChange={onChange}
               onStart={onStart}
               onStop={onStop}
@@ -161,7 +216,7 @@ export default function App() {
             </h2>
             <RequestStream
               decisions={snapshot.decisions}
-              clientCount={config?.client_count ?? 1}
+              clientCount={live ? 8 : config?.client_count ?? 1}
               onSelect={setSelected}
             />
           </div>
