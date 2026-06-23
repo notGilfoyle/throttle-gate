@@ -21,6 +21,7 @@ from .config import RunConfig
 from .generator import LoadGenerator
 from .limiters import build_limiters
 from .limiters.base import Decision, RateLimiter
+from .policy import Policy
 from .stats import StatsAggregator
 
 WORKER_ID = uuid.uuid4().hex[:8]
@@ -57,6 +58,9 @@ class Session:
         # `record()` (M7). It still runs the stats loop and fans out to the SSE
         # subscribers exactly like a generated session.
         self.live = live
+        # Per-route / per-key rules applied to live traffic (M9). Empty = the
+        # session's default limiter applies to everything.
+        self.policy = Policy()
 
         self._stop = asyncio.Event()
         self._gen_task: asyncio.Task | None = None

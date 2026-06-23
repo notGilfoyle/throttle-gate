@@ -62,7 +62,7 @@ class ThrottleGateMiddleware:
             return
 
         request = Request(scope, receive=receive)
-        body = {"key": self.key(request), "route": self.route(request)}
+        body = {"key": self.key(request), "route": self.route(request), "method": request.method}
         if self.algorithm:
             body["algorithm"] = self.algorithm
 
@@ -76,9 +76,12 @@ class ThrottleGateMiddleware:
             await response(scope, receive, send)
             return
 
-        if gate.status_code == 429:
+        # Allowed on 2xx; anything else (429 throttle, 403 policy deny) blocks and
+        # the gate's status + rate-limit headers are forwarded to the client.
+        if gate.status_code >= 400:
             headers = {h: gate.headers[h] for h in _FORWARD_HEADERS if h in gate.headers}
-            response = JSONResponse({"detail": "Too Many Requests"}, status_code=429, headers=headers)
+            detail = "Forbidden" if gate.status_code == 403 else "Too Many Requests"
+            response = JSONResponse({"detail": detail}, status_code=gate.status_code, headers=headers)
             await response(scope, receive, send)
             return
 

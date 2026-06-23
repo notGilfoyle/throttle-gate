@@ -63,6 +63,7 @@ export interface DecisionEvent {
   results: DecisionResult[];
   replica?: number; // distributed mode: which replica handled the request
   route?: string; // live mode: the route the real request hit
+  cost?: number; // live mode: how much the request spent (weighted cost, M9)
 }
 
 export interface AlgoStats {

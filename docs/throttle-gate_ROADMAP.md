@@ -61,19 +61,25 @@ Make "plug it in" true for the common stacks.
 
 *Exit:* a non-Python service can be rate-limited with one snippet + a sidecar. ✅
 
-## M9 — Policy engine
+## M9 — Policy engine  ·  **done** (backend; dashboard UI deferred)
 
 Move from one global knob to real rules.
 
-- **Per-route / per-method / per-key-tier rules** ("free 100/min, pro 10k/min";
-  `/login` stricter than `/search`). A policy document, hot-reloaded via the same
-  in-place config mutation `PATCH /api/config` already proves.
-- **Cost-weighted requests** — `cost` spends N tokens instead of 1 (a small
-  change to each Lua script + `evaluate` signature); expensive endpoints cost
-  more.
-- **Allow/deny lists** and per-key burst overrides.
+- **Cost-weighted requests** ✅ — `cost` spends N tokens / queue slots / counter
+  increments instead of 1, across all five algorithms (Lua + `evaluate` +
+  `/v1/check`); the inspector shows non-unit costs. cost=1 behavior unchanged;
+  concurrency test still green.
+- **Per-route / per-method / per-key-tier rules** ✅
+  ([`policy.py`](../backend/app/policy.py)) — an ordered `Policy` of rules
+  (`PUT/GET /v1/policy`), **first match wins**, each selecting algorithm + params
+  + cost. Each rule gets its own limiter state namespace, so `/login` and
+  `/search` don't share a bucket. Hot-swapped live with no restart.
+- **Allow/deny lists** ✅ — a rule with `deny: true` hard-blocks (403); the
+  in-process + edge adapters now block on any non-2xx so denies propagate.
 
-*Exit:* one deployment enforces different limits per route and per tier.
+*Exit:* one deployment enforces different limits per route, method, and key. ✅
+**Deferred:** a dashboard UI to author policies (today via REST); per-key burst
+overrides; engine-side fail-open (from M8).
 
 ## M10 — Persistence & metrics
 

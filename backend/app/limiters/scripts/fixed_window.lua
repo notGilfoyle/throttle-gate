@@ -4,9 +4,11 @@
 -- KEYS[1] = fixed_window:{client}:{window_index}
 -- ARGV[1] = limit
 -- ARGV[2] = window TTL in ms
+-- ARGV[3] = cost (counter increment; usually 1)
 -- Returns { allowed (0/1), count }
-local count = redis.call('INCR', KEYS[1])
-if count == 1 then
+local cost = tonumber(ARGV[3]) or 1
+local count = redis.call('INCRBY', KEYS[1], cost)
+if count == cost then  -- first write in this window (counter was absent/0)
   redis.call('PEXPIRE', KEYS[1], tonumber(ARGV[2]))
 end
 local allowed = count <= tonumber(ARGV[1]) and 1 or 0

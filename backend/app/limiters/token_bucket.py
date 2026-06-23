@@ -13,19 +13,24 @@ class TokenBucketLimiter(RateLimiter):
         self._script = self.load_script("token_bucket.lua")
 
     async def evaluate(
-        self, client_id: str, params: TokenBucketParams, now: float, node: str | None = None
+        self,
+        client_id: str,
+        params: TokenBucketParams,
+        now: float,
+        node: str | None = None,
+        cost: int = 1,
     ) -> tuple[bool, dict, float | None]:
         allowed_raw, tokens_raw = await self._script(
             keys=[self.state_key(client_id, node)],
-            args=[params.capacity, params.refill_rate, now, 1],
+            args=[params.capacity, params.refill_rate, now, cost],
         )
         allowed = bool(int(allowed_raw))
         tokens = float(tokens_raw)
 
         retry_after = None
         if not allowed and params.refill_rate > 0:
-            # Time for the bucket to accrue the 1 token this request needed.
-            retry_after = round((1 - tokens) / params.refill_rate, 3)
+            # Time for the bucket to accrue the `cost` tokens this request needed.
+            retry_after = round(max(0.0, cost - tokens) / params.refill_rate, 3)
 
         state = {
             "tokens": round(tokens, 4),

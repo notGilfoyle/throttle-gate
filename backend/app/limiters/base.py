@@ -66,9 +66,18 @@ class RateLimiter(ABC):
 
     @abstractmethod
     async def evaluate(
-        self, client_id: str, params: BaseModel, now: float, node: str | None = None
+        self,
+        client_id: str,
+        params: BaseModel,
+        now: float,
+        node: str | None = None,
+        cost: int = 1,
     ) -> tuple[bool, dict, float | None]:
-        """Run the algorithm. Returns (allowed, state, retry_after_seconds)."""
+        """Run the algorithm. Returns (allowed, state, retry_after_seconds).
+
+        `cost` is how much the request spends (tokens / queue slots / counter
+        increments) — 1 for a normal request, more for an expensive one (M9).
+        """
 
     async def check(
         self,
@@ -76,12 +85,13 @@ class RateLimiter(ABC):
         params: BaseModel,
         now: float | None = None,
         node: str | None = None,
+        cost: int = 1,
     ) -> Decision:
         """Evaluate one request, timing the limiter call for `latency_ms`."""
         if now is None:
             now = time.time()
         t0 = time.perf_counter()
-        allowed, state, retry_after = await self.evaluate(client_id, params, now, node)
+        allowed, state, retry_after = await self.evaluate(client_id, params, now, node, cost)
         latency_ms = round((time.perf_counter() - t0) * 1000, 3)
         return Decision(
             algorithm=self.key,

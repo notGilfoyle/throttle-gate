@@ -39,7 +39,7 @@ function throttleGate(options = {}) {
   } = options;
 
   return async function throttleGateMiddleware(req, res, next) {
-    const body = { key: key(req), route: route(req) };
+    const body = { key: key(req), route: route(req), method: req.method };
     if (algorithm) body.algorithm = algorithm;
 
     let gate;
@@ -56,14 +56,17 @@ function throttleGate(options = {}) {
       return res.end("rate limiter unavailable");
     }
 
-    if (gate.status === 429) {
+    // Allowed on 2xx; anything else (429 throttle, 403 policy deny) blocks and
+    // the gate's status + rate-limit headers are forwarded to the client.
+    if (gate.status >= 400) {
       for (const h of FORWARD_HEADERS) {
         const v = gate.headers.get(h);
         if (v != null) res.setHeader(h, v);
       }
-      res.statusCode = 429;
+      res.statusCode = gate.status;
       res.setHeader("content-type", "application/json");
-      return res.end(JSON.stringify({ detail: "Too Many Requests" }));
+      const detail = gate.status === 403 ? "Forbidden" : "Too Many Requests";
+      return res.end(JSON.stringify({ detail }));
     }
 
     return next();

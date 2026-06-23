@@ -4,10 +4,12 @@
 -- ARGV[1] = capacity
 -- ARGV[2] = leak_rate (requests/sec)
 -- ARGV[3] = now (epoch seconds, float)
+-- ARGV[4] = cost (queue slots this request needs; usually 1)
 -- Returns { allowed (0/1), queue_depth_string }
 local cap  = tonumber(ARGV[1])
 local rate = tonumber(ARGV[2])
 local now  = tonumber(ARGV[3])
+local cost = tonumber(ARGV[4]) or 1
 
 local d = redis.call('HMGET', KEYS[1], 'depth', 'ts')
 local depth = tonumber(d[1])
@@ -17,11 +19,11 @@ if depth == nil then depth = 0; ts = now end
 -- Leak whatever drained since we last looked.
 depth = math.max(0, depth - (now - ts) * rate)
 
--- Admit only if the queue has room for one more whole request, so depth never
--- exceeds capacity (keeps the funnel visualization honest).
+-- Admit only if the queue has room for the request's `cost` slots, so depth
+-- never exceeds capacity (keeps the funnel visualization honest).
 local allowed = 0
-if depth + 1 <= cap then
-  depth = depth + 1
+if depth + cost <= cap then
+  depth = depth + cost
   allowed = 1
 end
 

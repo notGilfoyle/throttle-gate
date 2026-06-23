@@ -13,11 +13,16 @@ class LeakyBucketLimiter(RateLimiter):
         self._script = self.load_script("leaky_bucket.lua")
 
     async def evaluate(
-        self, client_id: str, params: LeakyBucketParams, now: float, node: str | None = None
+        self,
+        client_id: str,
+        params: LeakyBucketParams,
+        now: float,
+        node: str | None = None,
+        cost: int = 1,
     ) -> tuple[bool, dict, float | None]:
         allowed_raw, depth_raw = await self._script(
             keys=[self.state_key(client_id, node)],
-            args=[params.capacity, params.leak_rate, now],
+            args=[params.capacity, params.leak_rate, now, cost],
         )
         allowed = bool(int(allowed_raw))
         depth = float(depth_raw)
@@ -26,8 +31,8 @@ class LeakyBucketLimiter(RateLimiter):
         est_wait_ms = round(depth / rate * 1000, 1) if rate > 0 else 0.0
         retry_after = None
         if not allowed and rate > 0:
-            # Time until one queue slot drains.
-            retry_after = max(round((depth - params.capacity + 1) / rate, 3), round(1 / rate, 3))
+            # Time until `cost` queue slots drain.
+            retry_after = max(round((depth - params.capacity + cost) / rate, 3), round(cost / rate, 3))
 
         state = {
             "queue_depth": round(depth, 4),

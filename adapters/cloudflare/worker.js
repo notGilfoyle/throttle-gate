@@ -29,23 +29,22 @@ export default {
       gate = await fetch(env.GATE_URL, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ key, route: url.pathname }),
+        body: JSON.stringify({ key, route: url.pathname, method: request.method }),
       });
     } catch {
       if (env.FAIL_OPEN !== "false") return fetch(request); // fail open
       return new Response("rate limiter unavailable", { status: 503 });
     }
 
-    if (gate.status === 429) {
+    // Allowed on 2xx; anything else (429 throttle, 403 policy deny) blocks.
+    if (gate.status >= 400) {
       const headers = new Headers({ "content-type": "application/json" });
       for (const h of FORWARD_HEADERS) {
         const v = gate.headers.get(h);
         if (v != null) headers.set(h, v);
       }
-      return new Response(JSON.stringify({ detail: "Too Many Requests" }), {
-        status: 429,
-        headers,
-      });
+      const detail = gate.status === 403 ? "Forbidden" : "Too Many Requests";
+      return new Response(JSON.stringify({ detail }), { status: gate.status, headers });
     }
 
     return fetch(request); // allowed → pass through to origin

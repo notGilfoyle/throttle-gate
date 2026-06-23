@@ -45,6 +45,9 @@ export default function RequestInspector({ decision, algorithms, onClose }: Prop
           <Meta k="Client" v={decision.client_id} />
           <Meta k="Timestamp" v={new Date(decision.ts * 1000).toLocaleTimeString()} />
           {decision.route && <Meta k="Route" v={decision.route} />}
+          {decision.cost !== undefined && decision.cost !== 1 && (
+            <Meta k="Cost" v={String(decision.cost)} />
+          )}
           {decision.replica !== undefined && <Meta k="Replica" v={`r${decision.replica}`} />}
           <Meta k="Algorithms" v={String(decision.results.length)} />
         </dl>

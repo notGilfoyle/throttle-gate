@@ -26,6 +26,8 @@ from .config import (
     RunConfig,
     RunParams,
 )
+from .limiters.base import Decision
+from .policy import Policy, resolve
 from .ratelimit_headers import ratelimit_headers
 from .sse import SessionManager, WORKER_ID, stream_events
 
@@ -88,6 +90,8 @@ class CheckRequest(BaseModel):
 
     key: str = "anonymous"
     route: str = "*"
+    method: str = "GET"  # for per-method policy matching (M9)
+    cost: int = 1  # how much this request spends — >1 for expensive endpoints (M9)
     algorithm: AlgorithmKey | None = None
     params: dict | None = None
 
@@ -155,35 +159,79 @@ async def live_info() -> dict:
 
 
 async def _live_check(
-    key: str, route: str, algorithm: AlgorithmKey | None, params_override: dict | None
+    key: str,
+    route: str,
+    method: str = "GET",
+    algorithm: AlgorithmKey | None = None,
+    params_override: dict | None = None,
+    cost: int = 1,
 ):
     """Evaluate one real request against the Live limiter and stream it to the
-    dashboard. Shared by the POST decision API and the GET auth endpoint."""
+    dashboard. Shared by the POST decision API and the GET auth endpoint.
+
+    Resolves the session policy (M9): the first matching rule selects the
+    algorithm, params, and cost (or hard-denies); unmatched traffic uses the
+    session default. Each rule has its own limiter state namespace (`scope`).
+    """
     session = app.state.sessions.live()
-    algo = algorithm or session.config.algorithm
+    rule = resolve(session.policy, key, route, method)
+    now = time.time()
+
+    async def stream(scope: str, decision: Decision) -> None:
+        event = {
+            "type": "decision",
+            "request_id": f"live_{uuid.uuid4().hex[:8]}",
+            "client_id": key,
+            "route": route,
+            "method": method,
+            "cost": cost if scope == "default" else (rule.cost if rule else cost),
+            "rule": scope,
+            "ts": now,
+            "results": [decision.model_dump()],
+        }
+        await session.record(event, [decision])
+
+    # Hard deny (block list) — no limiter consulted.
+    if rule is not None and rule.deny:
+        algo = algorithm or rule.algorithm or session.config.algorithm
+        decision = Decision(
+            algorithm=algo, allowed=False, status=403, retry_after=None,
+            latency_ms=0.0, state={"denied": True, "rule": rule.name},
+        )
+        await stream(rule.name, decision)
+        return decision, ratelimit_headers(decision)
+
+    # Precedence: explicit request override > matching rule > session default.
+    algo = algorithm or (rule.algorithm if rule else None) or session.config.algorithm
     limiter = app.state.sessions.limiters.get(algo)
     if limiter is None:
         raise HTTPException(status_code=400, detail=f"unknown algorithm: {algo}")
 
-    if params_override:
-        params = RunParams(**{algo: params_override}).for_algorithm(algo)
+    override = params_override or (rule.params if rule else None)
+    if override:
+        params = RunParams(**{algo: override}).for_algorithm(algo)
     else:
         params = session.config.params.for_algorithm(algo)
 
-    now = time.time()
-    decision = await limiter.check(key, params, now)
-
-    # Stream this real decision into the dashboard's Live session.
-    event = {
-        "type": "decision",
-        "request_id": f"live_{uuid.uuid4().hex[:8]}",
-        "client_id": key,
-        "route": route,
-        "ts": now,
-        "results": [decision.model_dump()],
-    }
-    await session.record(event, [decision])
+    eff_cost = max(1, int(rule.cost if rule else cost))
+    scope = rule.name if rule else "default"
+    # Namespace state per rule so different routes/tiers don't share a bucket.
+    decision = await limiter.check(f"{scope}|{key}", params, now, cost=eff_cost)
+    await stream(scope, decision)
     return decision, ratelimit_headers(decision)
+
+
+@app.get("/v1/policy")
+async def get_policy() -> dict:
+    """The Live session's active policy rules (M9)."""
+    return app.state.sessions.live().policy.model_dump()
+
+
+@app.put("/v1/policy")
+async def put_policy(policy: Policy) -> dict:
+    """Replace the Live session's policy (M9). First matching rule wins."""
+    app.state.sessions.live().policy = policy
+    return policy.model_dump()
 
 
 @app.post("/v1/check")
@@ -194,7 +242,9 @@ async def check(req: CheckRequest, response: Response) -> dict:
     `X-RateLimit-*` headers on reject, `200` otherwise. A middleware in front of
     the user's service calls this per request (see `adapters/`).
     """
-    decision, headers = await _live_check(req.key, req.route, req.algorithm, req.params)
+    decision, headers = await _live_check(
+        req.key, req.route, req.method, req.algorithm, req.params, req.cost
+    )
     for name, value in headers.items():
         response.headers[name] = value
     response.status_code = decision.status
@@ -215,6 +265,7 @@ async def authcheck(
     x_ratelimit_key: str | None = Header(default=None),
     x_api_key: str | None = Header(default=None),
     x_original_uri: str | None = Header(default=None),
+    x_original_method: str | None = Header(default=None),
     x_authz_mode: str | None = Header(default=None),
 ) -> Response:
     """Auth-subrequest variant for proxy gateways (M8): nginx `auth_request` and
@@ -235,7 +286,9 @@ async def authcheck(
     """
     resolved_key = key or x_ratelimit_key or x_api_key or "anonymous"
     resolved_route = route if route != "*" else (x_original_uri or "*")
-    decision, headers = await _live_check(resolved_key, resolved_route, None, None)
+    decision, headers = await _live_check(
+        resolved_key, resolved_route, x_original_method or "GET"
+    )
     if x_authz_mode == "envoy":
         status = 200 if decision.allowed else 429
     else:

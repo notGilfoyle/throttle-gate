@@ -107,10 +107,38 @@ allowed vs. throttled, by key and by route.
   # …then switch the dashboard to "Live traffic"
   ```
 
-The inspector shows each real request's key, **route**, and the exact headers a
-client would receive:
+The inspector shows each real request's key, **route**, **cost**, and the exact
+headers a client would receive:
 
 ![Live inspector](docs/screenshots/live-inspector.png)
+
+## Policies — per-route / per-key rules
+
+One global limit is rarely enough. A **policy** is an ordered list of rules
+(`PUT /v1/policy`); for each request the **first matching rule wins**, choosing
+the algorithm, params, and cost — or hard-denying it. Unmatched traffic uses the
+dashboard's default limiter. Each rule keeps its own state, so `/login` and
+`/search` never share a bucket.
+
+```bash
+curl -X PUT localhost:8000/v1/policy -H 'content-type: application/json' -d '{
+  "rules": [
+    {"name": "block-abuser", "match": {"keys": ["bad-actor"]}, "deny": true},
+    {"name": "login",  "match": {"route": "/login", "methods": ["POST"]},
+     "algorithm": "fixed_window", "params": {"limit": 5, "window_s": 60}},
+    {"name": "uploads", "match": {"route": "/api/upload/*"},
+     "algorithm": "token_bucket", "params": {"capacity": 100}, "cost": 10}
+  ]}'
+```
+
+- **Cost-weighting** — a rule (or a `/v1/check` request) can charge `cost > 1`, so
+  an expensive endpoint spends more of the budget. Supported by all five
+  algorithms.
+- **Deny lists** — `"deny": true` blocks matching requests with `403`; the
+  adapters propagate it (they pass through only on `2xx`).
+
+*(Policies are set via the API today; a dashboard editor is on the
+[roadmap](docs/throttle-gate_ROADMAP.md).)*
 
 ## Architecture
 
@@ -194,6 +222,7 @@ backend/app/
   config.py          RunConfig + algorithm metadata
   stats.py           rolling aggregates
   ratelimit_headers.py  X-RateLimit-* derivation for /v1/check
+  policy.py          per-route/key/method rules (cost, deny) for live traffic
   limiters/          one module per algorithm + Lua scripts
 frontend/src/
   api/               REST control + EventSource wrapper
