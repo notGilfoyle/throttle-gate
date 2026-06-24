@@ -3,10 +3,12 @@
 
 import type {
   AlertConfig,
+  AlgorithmKey,
   AlgorithmMeta,
   EngineSettings,
   HistoryPoint,
   Policy,
+  ReplayResult,
   RunConfig,
 } from "../types";
 
@@ -91,6 +93,21 @@ export async function putAlerts(config: AlertConfig): Promise<AlertConfig> {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(config),
+    }),
+  );
+}
+
+/** Onboarding (M12): replay an access log through limiters for comparison. */
+export async function replayLog(body: {
+  log: string;
+  algorithms?: AlgorithmKey[];
+  assumed_rps?: number;
+}): Promise<ReplayResult> {
+  return json(
+    await fetch(`${ROOT}/v1/replay`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
     }),
   );
 }

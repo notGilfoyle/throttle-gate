@@ -132,15 +132,19 @@ Differentiate beyond the five classics.
 
 *Exit:* at least one load-reactive limiter and GCRA shipped with visualizers. ✅
 
-## M12 — Onboarding & multi-tenancy
+## M12 — Onboarding & multi-tenancy  ·  **in progress**
 
 Make it a product others can run.
 
-- **Access-log replay** — upload an nginx/access log, replay it through compare
-  mode: *"Token Bucket would have blocked these 1,200; Sliding Window, 900."* A
-  zero-deploy on-ramp.
-- **"Recommend an algorithm" wizard** from a described workload.
-- **Dashboard auth + multi-tenant** key/project scoping.
+- **Access-log replay** ✅ ([`replay.py`](../backend/app/replay.py) +
+  [`ReplayDrawer.tsx`](../frontend/src/components/ReplayDrawer.tsx)) — paste an
+  nginx/Apache log (or `key,route` CSV); `POST /v1/replay` replays it through the
+  chosen algorithms *at the original timestamps* and compares allowed vs. blocked
+  per algorithm. A zero-deploy on-ramp; no live traffic needed.
+- **"Recommend an algorithm"** ✅ (folded into replay) — the result includes a
+  burstiness-aware recommendation (peak vs. average rps → which algorithms absorb
+  the spikes). A standalone questionnaire wizard could extend this later.
+- **Dashboard auth + multi-tenant** key/project scoping. *Remaining.*
 
 *Exit:* a new user can evaluate algorithms on their own logs and run a scoped,
 authenticated dashboard.

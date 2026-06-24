@@ -65,6 +65,44 @@ try {
   await send("Page.enable");
   await sleep(1500); // let React mount + fetch /api/algorithms
 
+  // Access-log replay (M12): open the drawer, inject a bursty log, run, capture.
+  if (process.env.REPLAY) {
+    await send("Runtime.evaluate", {
+      expression: `[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Replay log')?.click()`,
+    });
+    await sleep(400);
+    // Build a bursty log: one client floods 40 reqs in ~1s, another is steady.
+    await send("Runtime.evaluate", {
+      expression: `(() => {
+        const lines = [];
+        const base = new Date(Date.UTC(2024,9,10,13,55,0));
+        const fmt = (d) => {
+          const M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+          const p=(n)=>String(n).padStart(2,'0');
+          return p(d.getUTCDate())+'/'+M[d.getUTCMonth()]+'/'+d.getUTCFullYear()+':'+p(d.getUTCHours())+':'+p(d.getUTCMinutes())+':'+p(d.getUTCSeconds())+' +0000';
+        };
+        for (let i=0;i<40;i++){ const d=new Date(base.getTime()+i*25); lines.push('1.1.1.1 - - ['+fmt(d)+'] "GET /api/search HTTP/1.1" 200 12'); }
+        for (let i=0;i<15;i++){ const d=new Date(base.getTime()+i*1000); lines.push('2.2.2.2 - - ['+fmt(d)+'] "GET /api/list HTTP/1.1" 200 12'); }
+        const ta = document.querySelector('div[role=dialog] textarea');
+        const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;
+        setter.call(ta, lines.join('\\n'));
+        ta.dispatchEvent(new Event('input',{bubbles:true}));
+      })()`,
+    });
+    await sleep(300);
+    await send("Runtime.evaluate", {
+      expression: `[...document.querySelectorAll('div[role=dialog] button')].find(b => b.textContent.trim() === 'Run replay')?.click()`,
+    });
+    await sleep(2500); // replay + chart render
+    const { data } = await send("Page.captureScreenshot", { format: "png" });
+    writeFileSync(OUT, Buffer.from(data, "base64"));
+    console.log("ERRORS:", errors.length ? errors : "none");
+    console.log("SAVED:", OUT);
+    ws.close();
+    chrome.kill();
+    process.exit(0);
+  }
+
   // Live mode (M7): no synthetic generator — click the "Live traffic" toggle and
   // let externally-driven /v1/check traffic (e.g. scripts/live_demo.py) feed it.
   // Skips the Start flow entirely.
