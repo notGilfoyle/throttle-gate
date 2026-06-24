@@ -16,9 +16,9 @@ than theoretical.
 
 ## Features
 
-- **Five algorithms**, each with a purpose-built animated visualizer:
+- **Six algorithms**, each with a purpose-built animated visualizer:
   Token Bucket, Leaky Bucket, Fixed Window Counter, Sliding Window Log, Sliding
-  Window Counter.
+  Window Counter, and **GCRA** (leaky bucket as a meter).
 - **Atomic** state updates — every read-modify-write runs as a single Redis Lua
   script (`EVALSHA`), so concurrent requests never over-admit. Proven by a load
   test ([`test_concurrency.py`](backend/app/tests/test_concurrency.py)).
@@ -37,7 +37,7 @@ than theoretical.
   to 8 simulated clients. **Request Inspector** showing the full HTTP picture
   (status, `Retry-After`, simulated `X-RateLimit-*` headers, latency, raw state).
 
-## The five algorithms
+## The algorithms
 
 | Algorithm | Core idea | Visualization |
 |---|---|---|
@@ -46,6 +46,7 @@ than theoretical.
 | **Fixed Window** | Count requests per fixed time bucket; reset on the boundary. | Filling bar + reset countdown ring + a **boundary-burst** warning when adjacent windows both max out. |
 | **Sliding Window Log** | Store timestamps; count those within the trailing window. | Dots on a trailing time axis that age leftward and drop off as they leave the window. |
 | **Sliding Window Counter** | Weighted blend of current + previous fixed window. | Two window bars + a gliding estimate marker showing the smoothing. |
+| **GCRA** | Leaky bucket as a *meter*: one timestamp (TAT) enforces a smooth rate with a burst allowance. | A meter that fills a slot per allowed request and drains at the rate; rejects at the burst ceiling. |
 
 ## Comparison mode
 

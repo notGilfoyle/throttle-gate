@@ -12,6 +12,7 @@ import redis.asyncio as redis
 from ..config import AlgorithmKey
 from .base import Decision, RateLimiter
 from .fixed_window import FixedWindowLimiter
+from .gcra import GcraLimiter
 from .leaky_bucket import LeakyBucketLimiter
 from .sliding_counter import SlidingCounterLimiter
 from .sliding_log import SlidingLogLimiter
@@ -23,6 +24,7 @@ LIMITER_CLASSES: dict[str, type[RateLimiter]] = {
     "fixed_window": FixedWindowLimiter,
     "sliding_log": SlidingLogLimiter,
     "sliding_counter": SlidingCounterLimiter,
+    "gcra": GcraLimiter,
 }
 
 

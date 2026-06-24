@@ -32,6 +32,9 @@ def ratelimit_headers(decision: Decision) -> dict[str, str]:
     elif algo == "sliding_counter":
         limit = _num(state, "limit")
         remaining = max(0.0, math.floor(limit - _num(state, "estimate")))
+    elif algo == "gcra":
+        limit = _num(state, "burst")
+        remaining = _num(state, "remaining")
     else:  # fixed_window, sliding_log
         limit = _num(state, "limit")
         remaining = max(0.0, limit - _num(state, "count"))
