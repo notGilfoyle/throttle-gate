@@ -27,6 +27,7 @@ from .config import (
     RunConfig,
     RunParams,
 )
+from . import metrics
 from .limiters.base import Decision
 from .policy import SIZE_PARAM, Policy, resolve
 from .ratelimit_headers import ratelimit_headers
@@ -126,6 +127,12 @@ async def healthz() -> dict[str, str]:
     return {"status": "ok", "redis": "up" if pong else "down", "worker_id": WORKER_ID}
 
 
+@app.get("/metrics")
+async def prometheus_metrics() -> Response:
+    """Prometheus exposition of live-gateway counters (M10)."""
+    return Response(content=metrics.METRICS.render(), media_type="text/plain; version=0.0.4")
+
+
 @app.post("/api/gate")
 async def gate(req: GateRequest) -> dict:
     """Evaluate one request against the limiter — the protected endpoint for the
@@ -211,19 +218,28 @@ async def _live_check(
     override_mult = session.policy.overrides.get(key)
 
     async def stream(scope: str, decision: Decision) -> None:
+        eff_cost = cost if scope == "default" else (rule.cost if rule else cost)
         event = {
             "type": "decision",
             "request_id": f"live_{uuid.uuid4().hex[:8]}",
             "client_id": key,
             "route": route,
             "method": method,
-            "cost": cost if scope == "default" else (rule.cost if rule else cost),
+            "cost": eff_cost,
             "rule": scope,
             "ts": now,
             "results": [decision.model_dump()],
         }
         if override_mult and override_mult != 1:
             event["override"] = override_mult
+        # Prometheus counters (M10).
+        if decision.state.get("denied"):
+            label = metrics.DENIED
+        elif decision.state.get("degraded"):
+            label = metrics.DEGRADED
+        else:
+            label = metrics.ALLOWED if decision.allowed else metrics.THROTTLED
+        metrics.METRICS.record(decision.algorithm, scope, label, eff_cost)
         await session.record(event, [decision])
 
     # Hard deny (block list) — no limiter consulted.

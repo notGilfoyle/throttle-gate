@@ -7,6 +7,7 @@ import PolicyEditor from "./components/PolicyEditor";
 import RequestInspector from "./components/RequestInspector";
 import StatsPanel from "./components/StatsPanel";
 import Timeline from "./components/Timeline";
+import TopKeys from "./components/TopKeys";
 import Visualizer from "./components/visualizers";
 import { defaultConfig } from "./state/defaults";
 import { StreamStore } from "./state/streamStore";
@@ -252,6 +253,14 @@ export default function App() {
               <StatsPanel stats={snapshot.statsByAlgo[activeAlgorithms[0]]} rpsIn={snapshot.rpsIn} />
             )}
           </div>
+          {live && (
+            <div>
+              <h2 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                Top keys
+              </h2>
+              <TopKeys keys={snapshot.topKeys} />
+            </div>
+          )}
           <div className="flex min-h-0 flex-1 flex-col">
             <h2 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
               Request stream

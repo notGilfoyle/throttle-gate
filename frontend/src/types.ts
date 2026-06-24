@@ -103,12 +103,19 @@ export interface AlgoStats {
   throughput: number;
 }
 
+export interface TopKey {
+  key: string;
+  allowed: number;
+  rejected: number;
+}
+
 export interface StatsEvent {
   type: "stats";
   ts: number;
   window_s: number;
   per_algorithm: Record<string, AlgoStats>;
   rps_in: number;
+  top_keys?: TopKey[]; // live mode: top talkers / throttled keys (M10)
 }
 
 export interface HelloEvent {
