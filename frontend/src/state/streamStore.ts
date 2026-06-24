@@ -10,6 +10,7 @@ import type {
   DecisionEvent,
   HelloEvent,
   StatsEvent,
+  TopKey,
 } from "../types";
 
 const MAX_CHIPS = 150;
@@ -33,6 +34,7 @@ export interface StreamSnapshot {
   decisions: DecisionEvent[]; // newest first, capped at MAX_CHIPS
   statsByAlgo: Record<string, AlgoStats>;
   rpsIn: number;
+  topKeys: TopKey[]; // live mode: top talkers / throttled keys
   latestByAlgo: Record<string, AlgoLatest>;
   statsHistory: StatsPoint[]; // rolling, for the timeline
 }
@@ -43,6 +45,7 @@ const EMPTY: StreamSnapshot = {
   decisions: [],
   statsByAlgo: {},
   rpsIn: 0,
+  topKeys: [],
   latestByAlgo: {},
   statsHistory: [],
 };
@@ -151,6 +154,7 @@ export class StreamStore {
       decisions,
       statsByAlgo: this.pendingStats?.per_algorithm ?? prev.statsByAlgo,
       rpsIn: this.pendingStats?.rps_in ?? prev.rpsIn,
+      topKeys: this.pendingStats?.top_keys ?? prev.topKeys,
       latestByAlgo,
       statsHistory,
     };

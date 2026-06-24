@@ -87,16 +87,21 @@ Move from one global knob to real rules.
 *Exit:* one deployment enforces different limits per route, method, and key,
 editable from the dashboard. ✅
 
-## M10 — Persistence & metrics
+## M10 — Persistence & metrics  ·  **in progress**
 
 Make it trustworthy for ops; today all state is ephemeral in Redis.
 
-- **Time-series sink** (Redis Streams → ClickHouse/Timescale/Prometheus) for
-  "traffic over the last hour/day," not just a live tail.
-- **`GET /metrics` (Prometheus) + OpenTelemetry** so limiter data lands in the
-  team's existing Grafana.
-- **Top-talkers / throttled-keys views** and **webhook/Slack alerting** when a
-  key crosses a threshold or abuse is detected.
+- **`GET /metrics` (Prometheus)** ✅ ([`metrics.py`](../backend/app/metrics.py)) —
+  cumulative `throttlegate_requests_total{algorithm,rule,decision}` +
+  `throttlegate_cost_total`, hand-rolled exposition (no new dep), low-cardinality
+  labels. Lands straight in a team's Prometheus/Grafana.
+- **Top-talkers / throttled-keys view** ✅ — per-key allowed/rejected tallies in
+  the aggregator, streamed as `top_keys` in the SSE `stats` event and rendered as
+  a live "Top keys" panel ([`TopKeys.tsx`](../frontend/src/components/TopKeys.tsx)).
+- **Time-series sink** (Redis Streams → ClickHouse/Timescale) for "traffic over
+  the last hour/day," not just a live tail. *Remaining.*
+- **OpenTelemetry traces/spans** and **webhook/Slack alerting** when a key crosses
+  a threshold or abuse is detected. *Remaining.*
 
 *Exit:* historical dashboards + alerts without the Throttle-Gate UI open.
 

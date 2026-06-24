@@ -99,7 +99,7 @@ class Session:
     # ── event plumbing ──────────────────────────────────────────────────────
 
     async def _on_decision(self, event: dict, results: list[Decision]) -> None:
-        self.stats.record(event["ts"], results)
+        self.stats.record(event["ts"], results, event.get("client_id"))
         self._broadcast(event)
 
     async def _stats_loop(self) -> None:

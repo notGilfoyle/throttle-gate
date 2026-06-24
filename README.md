@@ -149,6 +149,16 @@ engine admits (degraded `200`) or rejects (`503`) per `GET/PUT /v1/settings`,
 toggled live from the dashboard header — independent of each adapter's own
 fail-open behavior.
 
+## Observability
+
+- **Prometheus** — `GET /metrics` exposes cumulative counters
+  (`throttlegate_requests_total{algorithm,rule,decision}`,
+  `throttlegate_cost_total`) for scraping into Grafana.
+- **Top keys** — in Live mode the dashboard shows the top talkers and who's being
+  throttled (per-key allowed vs `429`), streamed over SSE:
+
+![Top keys](docs/screenshots/top-keys.png)
+
 ## Architecture
 
 ```
@@ -232,6 +242,7 @@ backend/app/
   stats.py           rolling aggregates
   ratelimit_headers.py  X-RateLimit-* derivation for /v1/check
   policy.py          per-route/key/method rules (cost, deny) for live traffic
+  metrics.py         Prometheus /metrics counters for live traffic
   limiters/          one module per algorithm + Lua scripts
 frontend/src/
   api/               REST control + EventSource wrapper
