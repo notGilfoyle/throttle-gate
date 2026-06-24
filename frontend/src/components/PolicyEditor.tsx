@@ -30,8 +30,12 @@ const fromList = (l?: string[] | null): string => (l ?? []).join(", ");
  * rules (first match wins) — each matching on route/methods/keys and choosing an
  * algorithm + params + cost, or hard-denying. Saves via PUT /v1/policy.
  */
+// Per-key overrides are edited as rows (an object can't be edited key-by-key).
+type OverrideRow = { key: string; mult: number };
+
 export default function PolicyEditor({ open, algorithms, policy, onClose, onSave }: Props) {
   const [draft, setDraft] = useState<Policy>(policy);
+  const [overrides, setOverrides] = useState<OverrideRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,6 +43,7 @@ export default function PolicyEditor({ open, algorithms, policy, onClose, onSave
   useEffect(() => {
     if (open) {
       setDraft(structuredClone(policy));
+      setOverrides(Object.entries(policy.overrides ?? {}).map(([key, mult]) => ({ key, mult })));
       setError(null);
     }
   }, [open, policy]);
@@ -46,22 +51,27 @@ export default function PolicyEditor({ open, algorithms, policy, onClose, onSave
   if (!open) return null;
 
   const setRule = (i: number, next: PolicyRule) =>
-    setDraft({ rules: draft.rules.map((r, j) => (j === i ? next : r)) });
-  const addRule = () => setDraft({ rules: [...draft.rules, emptyRule()] });
-  const removeRule = (i: number) => setDraft({ rules: draft.rules.filter((_, j) => j !== i) });
+    setDraft({ ...draft, rules: draft.rules.map((r, j) => (j === i ? next : r)) });
+  const addRule = () => setDraft({ ...draft, rules: [...draft.rules, emptyRule()] });
+  const removeRule = (i: number) =>
+    setDraft({ ...draft, rules: draft.rules.filter((_, j) => j !== i) });
   const move = (i: number, dir: -1 | 1) => {
     const j = i + dir;
     if (j < 0 || j >= draft.rules.length) return;
     const rules = [...draft.rules];
     [rules[i], rules[j]] = [rules[j], rules[i]];
-    setDraft({ rules });
+    setDraft({ ...draft, rules });
   };
 
   const save = async () => {
     setSaving(true);
     setError(null);
     try {
-      await onSave(draft);
+      const overridesObj: Record<string, number> = {};
+      for (const { key, mult } of overrides) {
+        if (key.trim()) overridesObj[key.trim()] = mult;
+      }
+      await onSave({ ...draft, overrides: overridesObj });
       onClose();
     } catch (e) {
       setError(String(e));
@@ -108,6 +118,56 @@ export default function PolicyEditor({ open, algorithms, policy, onClose, onSave
           >
             + Add rule
           </button>
+
+          <div className="mt-2 border-t border-zinc-800 pt-3">
+            <h3 className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
+              Per-key burst overrides
+            </h3>
+            <p className="mb-2 text-[11px] leading-snug text-zinc-600">
+              Multiply the matched limit for specific keys (e.g. a VIP key gets 3× the
+              capacity) without writing a separate rule.
+            </p>
+            <div className="space-y-1.5">
+              {overrides.map((row, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    value={row.key}
+                    placeholder="key"
+                    onChange={(e) =>
+                      setOverrides(overrides.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)))
+                    }
+                    className="flex-1 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-xs text-zinc-200 placeholder:text-zinc-600"
+                  />
+                  <span className="text-zinc-500">×</span>
+                  <input
+                    type="number"
+                    min={1}
+                    step={0.5}
+                    value={row.mult}
+                    onChange={(e) =>
+                      setOverrides(
+                        overrides.map((r, j) => (j === i ? { ...r, mult: Number(e.target.value) } : r)),
+                      )
+                    }
+                    className="w-20 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-xs text-zinc-200"
+                  />
+                  <button
+                    onClick={() => setOverrides(overrides.filter((_, j) => j !== i))}
+                    className="px-1 text-zinc-500 hover:text-red-400"
+                    aria-label="Remove override"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={() => setOverrides([...overrides, { key: "", mult: 2 }])}
+                className="w-full rounded border border-dashed border-zinc-700 py-1.5 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200"
+              >
+                + Add override
+              </button>
+            </div>
+          </div>
         </div>
 
         {error && (

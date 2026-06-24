@@ -136,11 +136,18 @@ curl -X PUT localhost:8000/v1/policy -H 'content-type: application/json' -d '{
   algorithms.
 - **Deny lists** — `"deny": true` blocks matching requests with `403`; the
   adapters propagate it (they pass through only on `2xx`).
+- **Per-key burst overrides** — `"overrides": {"vip-1": 3}` gives a key a multiple
+  of the matched limit (e.g. 3× capacity) without writing a separate rule.
 
 Or author them in the dashboard — the **Policies** drawer (Live mode) edits,
-reorders, and saves rules without touching the API:
+reorders, and saves rules and per-key overrides without touching the API:
 
 ![Policy editor](docs/screenshots/policy-editor.png)
+
+**Fail-open vs fail-closed:** if the limiter store (Redis) is unreachable, the
+engine admits (degraded `200`) or rejects (`503`) per `GET/PUT /v1/settings`,
+toggled live from the dashboard header — independent of each adapter's own
+fail-open behavior.
 
 ## Architecture
 

@@ -61,6 +61,9 @@ class Session:
         # Per-route / per-key rules applied to live traffic (M9). Empty = the
         # session's default limiter applies to everything.
         self.policy = Policy()
+        # When the limiter store (Redis) is unreachable, fail open (admit) vs.
+        # fail closed (reject 503). A gateway must choose; the demo never did.
+        self.fail_open = True
 
         self._stop = asyncio.Event()
         self._gen_task: asyncio.Task | None = None

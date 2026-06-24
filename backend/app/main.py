@@ -17,6 +17,7 @@ from fastapi import FastAPI, Header, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from redis.exceptions import RedisError
 
 from .config import (
     ALGORITHMS,
@@ -27,7 +28,7 @@ from .config import (
     RunParams,
 )
 from .limiters.base import Decision
-from .policy import Policy, resolve
+from .policy import SIZE_PARAM, Policy, resolve
 from .ratelimit_headers import ratelimit_headers
 from .sse import SessionManager, WORKER_ID, stream_events
 
@@ -158,6 +159,36 @@ async def live_info() -> dict:
     return {"session_id": session.id, "config": session.config.model_dump()}
 
 
+class EngineSettings(BaseModel):
+    """Engine behaviour knobs (M8/M9 deferrals)."""
+
+    fail_open: bool = True  # admit (True) vs reject 503 (False) when Redis is down
+
+
+def _degraded_decision(algo: AlgorithmKey, fail_open: bool) -> Decision:
+    """Synthetic verdict when the limiter store is unreachable."""
+    return Decision(
+        algorithm=algo,
+        allowed=fail_open,
+        status=200 if fail_open else 503,
+        retry_after=None,
+        latency_ms=0.0,
+        state={"degraded": True, "fail_open": fail_open},
+    )
+
+
+@app.get("/v1/settings")
+async def get_settings() -> dict:
+    """Engine settings for the Live session (M8/M9)."""
+    return {"fail_open": app.state.sessions.live().fail_open}
+
+
+@app.put("/v1/settings")
+async def put_settings(settings: EngineSettings) -> dict:
+    app.state.sessions.live().fail_open = settings.fail_open
+    return {"fail_open": settings.fail_open}
+
+
 async def _live_check(
     key: str,
     route: str,
@@ -177,6 +208,8 @@ async def _live_check(
     rule = resolve(session.policy, key, route, method)
     now = time.time()
 
+    override_mult = session.policy.overrides.get(key)
+
     async def stream(scope: str, decision: Decision) -> None:
         event = {
             "type": "decision",
@@ -189,6 +222,8 @@ async def _live_check(
             "ts": now,
             "results": [decision.model_dump()],
         }
+        if override_mult and override_mult != 1:
+            event["override"] = override_mult
         await session.record(event, [decision])
 
     # Hard deny (block list) — no limiter consulted.
@@ -213,10 +248,20 @@ async def _live_check(
     else:
         params = session.config.params.for_algorithm(algo)
 
+    # Per-key burst override: scale this key's size param by its multiplier.
+    if override_mult and override_mult != 1:
+        field = SIZE_PARAM[algo]
+        scaled = getattr(params, field) * override_mult
+        params = params.model_copy(update={field: int(round(scaled)) if field == "limit" else scaled})
+
     eff_cost = max(1, int(rule.cost if rule else cost))
     scope = rule.name if rule else "default"
     # Namespace state per rule so different routes/tiers don't share a bucket.
-    decision = await limiter.check(f"{scope}|{key}", params, now, cost=eff_cost)
+    try:
+        decision = await limiter.check(f"{scope}|{key}", params, now, cost=eff_cost)
+    except RedisError:
+        # Limiter store unreachable: fall back to the engine's fail-open policy.
+        decision = _degraded_decision(algo, session.fail_open)
     await stream(scope, decision)
     return decision, ratelimit_headers(decision)
 

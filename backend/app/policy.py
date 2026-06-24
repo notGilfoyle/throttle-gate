@@ -38,6 +38,20 @@ class PolicyRule(BaseModel):
 
 class Policy(BaseModel):
     rules: list[PolicyRule] = Field(default_factory=list)
+    # Per-key burst overrides: key → multiplier applied to the matched rule's
+    # size param (token/leaky `capacity`, window `limit`). Lets a VIP key get,
+    # say, 3× the limit without writing a separate rule.
+    overrides: dict[str, float] = Field(default_factory=dict)
+
+
+# The "size" param each algorithm scales for a burst override.
+SIZE_PARAM: dict[AlgorithmKey, str] = {
+    "token_bucket": "capacity",
+    "leaky_bucket": "capacity",
+    "fixed_window": "limit",
+    "sliding_log": "limit",
+    "sliding_counter": "limit",
+}
 
 
 def resolve(policy: Policy, key: str, route: str, method: str) -> PolicyRule | None:
