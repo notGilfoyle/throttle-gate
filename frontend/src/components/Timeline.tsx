@@ -18,6 +18,7 @@ const COLORS: Record<AlgorithmKey, string> = {
   sliding_log: "#a78bfa",
   sliding_counter: "#f472b6",
   gcra: "#22d3ee",
+  concurrency: "#fb923c",
 };
 
 const SHORT: Record<AlgorithmKey, string> = {
@@ -27,6 +28,7 @@ const SHORT: Record<AlgorithmKey, string> = {
   sliding_log: "Sld Log",
   sliding_counter: "Sld Cnt",
   gcra: "GCRA",
+  concurrency: "Concurrency",
 };
 
 interface Props {

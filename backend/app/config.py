@@ -23,6 +23,7 @@ AlgorithmKey = Literal[
     "sliding_log",
     "sliding_counter",
     "gcra",
+    "concurrency",
 ]
 
 Pattern = Literal["steady", "burst", "ramp", "spike"]
@@ -61,6 +62,11 @@ class GcraParams(BaseModel):
     burst: int = 10  # how many requests may arrive in a clump
 
 
+class ConcurrencyParams(BaseModel):
+    limit: int = 5  # max simultaneous in-flight requests
+    lease_ttl_s: float = 1.0  # assumed/max hold time before a slot auto-releases
+
+
 class RunParams(BaseModel):
     """Params for every algorithm, so compare mode has them all on hand."""
 
@@ -70,6 +76,7 @@ class RunParams(BaseModel):
     sliding_log: SlidingLogParams = Field(default_factory=SlidingLogParams)
     sliding_counter: SlidingCounterParams = Field(default_factory=SlidingCounterParams)
     gcra: GcraParams = Field(default_factory=GcraParams)
+    concurrency: ConcurrencyParams = Field(default_factory=ConcurrencyParams)
 
     def for_algorithm(self, algo: AlgorithmKey) -> BaseModel:
         return getattr(self, algo)
@@ -198,6 +205,16 @@ ALGORITHMS: list[AlgorithmMeta] = [
             ParamSpec(name="burst", label="Burst", type="int", default=10, min=1, max=100, step=1),
         ],
         state_fields=["level", "burst", "rate", "emission_interval", "remaining"],
+    ),
+    AlgorithmMeta(
+        key="concurrency",
+        label="Concurrency",
+        description="Caps simultaneous in-flight requests (not a rate). Each request leases a slot for up to its hold time; slots auto-release when the lease expires.",
+        params=[
+            ParamSpec(name="limit", label="Max in-flight", type="int", default=5, min=1, max=100, step=1),
+            ParamSpec(name="lease_ttl_s", label="Hold time (s)", type="float", default=1, min=0.1, max=10, step=0.1),
+        ],
+        state_fields=["active", "limit", "lease_ttl_s", "remaining"],
     ),
 ]
 

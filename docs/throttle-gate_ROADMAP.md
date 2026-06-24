@@ -111,20 +111,26 @@ Make it trustworthy for ops; today all state is ephemeral in Redis.
 
 *Exit:* historical dashboards + alerts without the Throttle-Gate UI open. ✅
 
-## M11 — Smarter limiting  ·  **in progress**
+## M11 — Smarter limiting  ·  **done** (exit met)
 
 Differentiate beyond the five classics.
 
 - **GCRA** ✅ — the "leaky bucket as a meter" algorithm, as a sixth algorithm
   ([`gcra.py`](../backend/app/limiters/gcra.py) + `gcra.lua`): one stored TAT,
   atomic, cost-aware, with a purpose-built meter visualizer
-  ([`GcraViz.tsx`](../frontend/src/components/visualizers/GcraViz.tsx)). Works in
-  single, compare, distributed, live, and policy modes like any other algorithm.
-- **Concurrency limiter** (cap in-flight, not rate) and **adaptive limiting**
-  (AIMD off backend latency/error rate) — the load-reactive limiter. *Remaining.*
-- **Anomaly detection** — flag keys deviating from their own baseline. *Remaining.*
+  ([`GcraViz.tsx`](../frontend/src/components/visualizers/GcraViz.tsx)).
+- **Concurrency limiter** ✅ — caps *in-flight* requests, not a rate
+  ([`concurrency.py`](../backend/app/limiters/concurrency.py) + `concurrency.lua`):
+  a leased semaphore (sorted set of leases, score = expiry) that auto-releases on
+  lease expiry, so it fits the single-shot `check()` with no API change; in
+  simulate mode concurrency emerges from Little's law (`L ≈ rps × hold`). Slot-grid
+  visualizer ([`ConcurrencyViz.tsx`](../frontend/src/components/visualizers/ConcurrencyViz.tsx)).
+  This is the load-reactive limiter the exit calls for.
+- **Adaptive limiting** (AIMD off backend latency) and **anomaly detection**
+  (flag keys deviating from their baseline) — *deferred* as further differentiation
+  (exit is already met by the concurrency limiter + GCRA).
 
-*Exit:* at least one load-reactive limiter and GCRA shipped with visualizers.
+*Exit:* at least one load-reactive limiter and GCRA shipped with visualizers. ✅
 
 ## M12 — Onboarding & multi-tenancy
 

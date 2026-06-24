@@ -7,7 +7,8 @@ export type AlgorithmKey =
   | "fixed_window"
   | "sliding_log"
   | "sliding_counter"
-  | "gcra";
+  | "gcra"
+  | "concurrency";
 
 export type Pattern = "steady" | "burst" | "ramp" | "spike";
 
@@ -193,5 +194,12 @@ export interface GcraState {
   rate: number;
   emission_interval: number;
   tau: number;
+  remaining: number;
+}
+
+export interface ConcurrencyState {
+  active: number; // in-flight leases right now
+  limit: number;
+  lease_ttl_s: number;
   remaining: number;
 }

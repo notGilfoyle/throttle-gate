@@ -18,6 +18,8 @@ function rateLimitHeaders(algorithm: AlgorithmKey, state: Record<string, number 
       return { limit: n("limit"), remaining: Math.max(0, Math.floor(n("limit") - n("estimate"))) };
     case "gcra":
       return { limit: n("burst"), remaining: Math.max(0, n("remaining")) };
+    case "concurrency":
+      return { limit: n("limit"), remaining: Math.max(0, n("remaining")) };
     default: // fixed_window, sliding_log
       return { limit: n("limit"), remaining: Math.max(0, n("limit") - n("count")) };
   }
