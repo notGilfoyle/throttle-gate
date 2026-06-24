@@ -125,6 +125,30 @@ export interface HelloEvent {
   config: RunConfig;
 }
 
+// ── Observability (M10) ─────────────────────────────────────────────────────
+
+export interface HistoryPoint {
+  t: number; // epoch seconds (bucket)
+  allowed: number;
+  rejected: number;
+}
+
+export interface AlertConfig {
+  webhook_url: string | null;
+  throttle_threshold: number; // throttled hits within the window to trigger; 0 = off
+  window_s: number;
+  cooldown_s: number;
+}
+
+export interface AlertEvent {
+  type: "alert";
+  key: string;
+  throttled: number;
+  window_s: number;
+  threshold: number;
+  ts: number;
+}
+
 // Per-algorithm state shapes (PRD §4) for the typed visualizers.
 export interface TokenBucketState {
   tokens: number;

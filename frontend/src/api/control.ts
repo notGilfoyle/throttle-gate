@@ -1,7 +1,14 @@
 // REST control-plane client (PRD §7.1). All paths are proxied to the backend
 // by the Vite dev server (see vite.config.ts).
 
-import type { AlgorithmMeta, EngineSettings, Policy, RunConfig } from "../types";
+import type {
+  AlertConfig,
+  AlgorithmMeta,
+  EngineSettings,
+  HistoryPoint,
+  Policy,
+  RunConfig,
+} from "../types";
 
 const BASE = "/api";
 const ROOT = ""; // backend root for the /v1/* live + policy endpoints
@@ -62,6 +69,28 @@ export async function putSettings(settings: EngineSettings): Promise<EngineSetti
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(settings),
+    }),
+  );
+}
+
+/** Observability (M10): sampled traffic history. */
+export async function getHistory(
+  minutes = 30,
+): Promise<{ points: HistoryPoint[]; bucket_s: number }> {
+  return json(await fetch(`${ROOT}/v1/history?minutes=${minutes}`));
+}
+
+/** Observability (M10): per-key throttle alert config. */
+export async function getAlerts(): Promise<AlertConfig> {
+  return json(await fetch(`${ROOT}/v1/alerts`));
+}
+
+export async function putAlerts(config: AlertConfig): Promise<AlertConfig> {
+  return json(
+    await fetch(`${ROOT}/v1/alerts`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(config),
     }),
   );
 }

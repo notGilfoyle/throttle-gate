@@ -87,7 +87,7 @@ Move from one global knob to real rules.
 *Exit:* one deployment enforces different limits per route, method, and key,
 editable from the dashboard. ✅
 
-## M10 — Persistence & metrics  ·  **in progress**
+## M10 — Persistence & metrics  ·  **done** (OTel deferred)
 
 Make it trustworthy for ops; today all state is ephemeral in Redis.
 
@@ -98,12 +98,18 @@ Make it trustworthy for ops; today all state is ephemeral in Redis.
 - **Top-talkers / throttled-keys view** ✅ — per-key allowed/rejected tallies in
   the aggregator, streamed as `top_keys` in the SSE `stats` event and rendered as
   a live "Top keys" panel ([`TopKeys.tsx`](../frontend/src/components/TopKeys.tsx)).
-- **Time-series sink** (Redis Streams → ClickHouse/Timescale) for "traffic over
-  the last hour/day," not just a live tail. *Remaining.*
-- **OpenTelemetry traces/spans** and **webhook/Slack alerting** when a key crosses
-  a threshold or abuse is detected. *Remaining.*
+- **Time-series history** ✅ ([`history.py`](../backend/app/history.py)) — the live
+  session samples allowed/rejected every 5s into a Redis sorted set (capped,
+  self-expiring, survives a backend restart); `GET /v1/history` + the dashboard's
+  Observability drawer chart show "traffic over the last 30 min," not just a tail.
+- **Webhook alerting** ✅ ([`alerts.py`](../backend/app/alerts.py)) — POST a webhook
+  when one key is throttled past a threshold within a window (debounced per key);
+  configured at `GET/PUT /v1/alerts` and in the Observability drawer; also
+  broadcast as an SSE `alert` event → dashboard toast.
+- **OpenTelemetry traces/spans** — *deferred* (Prometheus covers the metrics need;
+  traces fold into a later pass if wanted).
 
-*Exit:* historical dashboards + alerts without the Throttle-Gate UI open.
+*Exit:* historical dashboards + alerts without the Throttle-Gate UI open. ✅
 
 ## M11 — Smarter limiting
 

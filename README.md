@@ -159,6 +159,15 @@ fail-open behavior.
 
 ![Top keys](docs/screenshots/top-keys.png)
 
+- **Traffic history** — the live gateway samples allowed/throttled every 5s into
+  Redis (`GET /v1/history`), so the **Observability** drawer shows the last 30
+  minutes — not just the live tail. History survives a backend restart.
+- **Throttle alerts** — POST a webhook when one key is throttled past a threshold
+  within a window (`GET/PUT /v1/alerts`); alerts also surface live as a dashboard
+  toast.
+
+![Observability](docs/screenshots/observability.png)
+
 ## Architecture
 
 ```
@@ -243,6 +252,8 @@ backend/app/
   ratelimit_headers.py  X-RateLimit-* derivation for /v1/check
   policy.py          per-route/key/method rules (cost, deny) for live traffic
   metrics.py         Prometheus /metrics counters for live traffic
+  history.py         Redis-backed traffic time series (GET /v1/history)
+  alerts.py          per-key throttle webhook alerting
   limiters/          one module per algorithm + Lua scripts
 frontend/src/
   api/               REST control + EventSource wrapper

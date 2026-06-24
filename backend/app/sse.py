@@ -17,6 +17,8 @@ from typing import AsyncGenerator
 
 import redis.asyncio as redis
 
+from . import history
+from .alerts import Alerter
 from .config import RunConfig
 from .generator import LoadGenerator
 from .limiters import build_limiters
@@ -48,12 +50,15 @@ class Session:
         limiters: dict[str, RateLimiter],
         *,
         live: bool = False,
+        redis_client: redis.Redis | None = None,
     ) -> None:
         self.id = session_id
         self.config = config
         self.stats = StatsAggregator()
         self.subscribers: set[asyncio.Queue] = set()
         self.running = False
+        # Redis handle for the live history sampler (M10); None disables history.
+        self.redis = redis_client
         # A "live" session has no synthetic generator: real requests feed it via
         # `record()` (M7). It still runs the stats loop and fans out to the SSE
         # subscribers exactly like a generated session.
@@ -64,10 +69,13 @@ class Session:
         # When the limiter store (Redis) is unreachable, fail open (admit) vs.
         # fail closed (reject 503). A gateway must choose; the demo never did.
         self.fail_open = True
+        # Per-key throttle alerting (M10).
+        self.alerter = Alerter()
 
         self._stop = asyncio.Event()
         self._gen_task: asyncio.Task | None = None
         self._stats_task: asyncio.Task | None = None
+        self._history_task: asyncio.Task | None = None
         self._generator = None if live else LoadGenerator(config, limiters, self._on_decision)
 
     # ── generation lifecycle ────────────────────────────────────────────────
@@ -80,20 +88,26 @@ class Session:
         if self._generator is not None:
             self._gen_task = asyncio.create_task(self._generator.run(self._stop))
         self._stats_task = asyncio.create_task(self._stats_loop())
+        if self.live and self.redis is not None:
+            self._history_task = asyncio.create_task(self._history_loop())
 
     async def record(self, event: dict, results: list[Decision]) -> None:
         """Ingest one externally-evaluated request (Live mode) into the stream."""
         await self._on_decision(event, results)
+
+    def emit(self, event: dict) -> None:
+        """Broadcast a non-decision event (e.g. an alert) to subscribers (M10)."""
+        self._broadcast(event)
 
     async def stop(self) -> None:
         """Halt generation but keep the session (and limiter state) inspectable."""
         if not self.running:
             return
         self._stop.set()
-        for task in (self._gen_task, self._stats_task):
+        for task in (self._gen_task, self._stats_task, self._history_task):
             if task:
                 await asyncio.gather(task, return_exceptions=True)
-        self._gen_task = self._stats_task = None
+        self._gen_task = self._stats_task = self._history_task = None
         self.running = False
 
     # ── event plumbing ──────────────────────────────────────────────────────
@@ -109,6 +123,23 @@ class Session:
                 return
             except asyncio.TimeoutError:
                 self._broadcast(self.stats.snapshot(time.time()))
+
+    async def _history_loop(self) -> None:
+        """Sample the cumulative totals every BUCKET_S and persist the delta (M10)."""
+        prev_a = prev_r = 0
+        while not self._stop.is_set():
+            try:
+                await asyncio.wait_for(self._stop.wait(), timeout=history.BUCKET_S)
+                return
+            except asyncio.TimeoutError:
+                total_a = sum(self.stats.allowed.values())
+                total_r = sum(self.stats.rejected.values())
+                da, dr = total_a - prev_a, total_r - prev_r
+                prev_a, prev_r = total_a, total_r
+                try:
+                    await history.record(self.redis, time.time(), da, dr)
+                except Exception:
+                    pass  # history is best-effort; never disrupt the live session
 
     def _broadcast(self, event: dict) -> None:
         for q in list(self.subscribers):
@@ -161,7 +192,9 @@ class SessionManager:
         fed by real `/v1/check` traffic and tuned via `PATCH /api/config`."""
         session = self.sessions.get(LIVE_SESSION_ID)
         if session is None:
-            session = Session(LIVE_SESSION_ID, RunConfig(), self.limiters, live=True)
+            session = Session(
+                LIVE_SESSION_ID, RunConfig(), self.limiters, live=True, redis_client=self.redis
+            )
             self.sessions[LIVE_SESSION_ID] = session
             session.start()
         return session

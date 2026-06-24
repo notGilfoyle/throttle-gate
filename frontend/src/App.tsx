@@ -4,6 +4,7 @@ import ControlPanel from "./components/ControlPanel";
 import RequestStream from "./components/RequestStream";
 import DistributedPanel from "./components/DistributedPanel";
 import PolicyEditor from "./components/PolicyEditor";
+import ObservabilityDrawer from "./components/ObservabilityDrawer";
 import RequestInspector from "./components/RequestInspector";
 import StatsPanel from "./components/StatsPanel";
 import Timeline from "./components/Timeline";
@@ -31,6 +32,8 @@ export default function App() {
   const [policyOpen, setPolicyOpen] = useState(false);
   // Engine fail-open setting (M8): admit vs reject 503 when the store is down.
   const [failOpen, setFailOpen] = useState(true);
+  // Observability drawer (M10): history chart + alert config.
+  const [obsOpen, setObsOpen] = useState(false);
 
   const live = mode === "live";
   const running = live ? liveSessionId !== null : sessionId !== null;
@@ -173,6 +176,12 @@ export default function App() {
               >
                 Policies{policy.rules.length > 0 && ` (${policy.rules.length})`}
               </button>
+              <button
+                onClick={() => setObsOpen(true)}
+                className="rounded border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:border-zinc-600"
+              >
+                Observability
+              </button>
             </>
           )}
           <ConnBadge status={running ? snapshot.status : "idle"} workerId={snapshot.workerId} />
@@ -290,6 +299,17 @@ export default function App() {
           setPolicy(saved);
         }}
       />
+
+      <ObservabilityDrawer open={obsOpen} onClose={() => setObsOpen(false)} />
+
+      {live && snapshot.alerts.length > 0 && (
+        <div className="fixed bottom-4 right-4 z-50 w-80 rounded border border-red-800 bg-red-950/90 p-3 text-xs text-red-200 shadow-xl">
+          <div className="mb-1 font-semibold">⚠ Throttle alert</div>
+          <div className="font-mono">
+            <span className="text-red-300">{snapshot.alerts[0].key}</span> — {snapshot.alerts[0].throttled} throttled in {snapshot.alerts[0].window_s}s
+          </div>
+        </div>
+      )}
 
       <div className="h-[180px] border-t border-zinc-800 px-4 py-2">
         <h2 className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
