@@ -111,14 +111,18 @@ Make it trustworthy for ops; today all state is ephemeral in Redis.
 
 *Exit:* historical dashboards + alerts without the Throttle-Gate UI open. ✅
 
-## M11 — Smarter limiting
+## M11 — Smarter limiting  ·  **in progress**
 
 Differentiate beyond the five classics.
 
+- **GCRA** ✅ — the "leaky bucket as a meter" algorithm, as a sixth algorithm
+  ([`gcra.py`](../backend/app/limiters/gcra.py) + `gcra.lua`): one stored TAT,
+  atomic, cost-aware, with a purpose-built meter visualizer
+  ([`GcraViz.tsx`](../frontend/src/components/visualizers/GcraViz.tsx)). Works in
+  single, compare, distributed, live, and policy modes like any other algorithm.
 - **Concurrency limiter** (cap in-flight, not rate) and **adaptive limiting**
-  (AIMD off backend latency/error rate).
-- **GCRA** — the "leaky bucket as a meter" algorithm — as a sixth algorithm.
-- **Anomaly detection** — flag keys deviating from their own baseline.
+  (AIMD off backend latency/error rate) — the load-reactive limiter. *Remaining.*
+- **Anomaly detection** — flag keys deviating from their own baseline. *Remaining.*
 
 *Exit:* at least one load-reactive limiter and GCRA shipped with visualizers.
 

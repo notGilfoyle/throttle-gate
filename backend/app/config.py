@@ -22,6 +22,7 @@ AlgorithmKey = Literal[
     "fixed_window",
     "sliding_log",
     "sliding_counter",
+    "gcra",
 ]
 
 Pattern = Literal["steady", "burst", "ramp", "spike"]
@@ -55,6 +56,11 @@ class SlidingCounterParams(BaseModel):
     window_s: float = 1
 
 
+class GcraParams(BaseModel):
+    rate: float = 5  # sustained requests/sec
+    burst: int = 10  # how many requests may arrive in a clump
+
+
 class RunParams(BaseModel):
     """Params for every algorithm, so compare mode has them all on hand."""
 
@@ -63,6 +69,7 @@ class RunParams(BaseModel):
     fixed_window: FixedWindowParams = Field(default_factory=FixedWindowParams)
     sliding_log: SlidingLogParams = Field(default_factory=SlidingLogParams)
     sliding_counter: SlidingCounterParams = Field(default_factory=SlidingCounterParams)
+    gcra: GcraParams = Field(default_factory=GcraParams)
 
     def for_algorithm(self, algo: AlgorithmKey) -> BaseModel:
         return getattr(self, algo)
@@ -181,6 +188,16 @@ ALGORITHMS: list[AlgorithmMeta] = [
             ParamSpec(name="window_s", label="Window (s)", type="float", default=1, min=0.25, max=10, step=0.25),
         ],
         state_fields=["curr_count", "prev_count", "weight", "estimate", "limit"],
+    ),
+    AlgorithmMeta(
+        key="gcra",
+        label="GCRA",
+        description="Generic Cell Rate Algorithm — leaky bucket as a meter: one timestamp (TAT) enforces a smooth rate with a burst allowance.",
+        params=[
+            ParamSpec(name="rate", label="Rate (req/s)", type="float", default=5, min=0.5, max=100, step=0.5),
+            ParamSpec(name="burst", label="Burst", type="int", default=10, min=1, max=100, step=1),
+        ],
+        state_fields=["level", "burst", "rate", "emission_interval", "remaining"],
     ),
 ]
 

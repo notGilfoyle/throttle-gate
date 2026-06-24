@@ -6,7 +6,8 @@ export type AlgorithmKey =
   | "leaky_bucket"
   | "fixed_window"
   | "sliding_log"
-  | "sliding_counter";
+  | "sliding_counter"
+  | "gcra";
 
 export type Pattern = "steady" | "burst" | "ramp" | "spike";
 
@@ -184,4 +185,13 @@ export interface SlidingCounterState {
   estimate: number;
   limit: number;
   window_s: number;
+}
+
+export interface GcraState {
+  level: number; // request-slots ahead of schedule (0 = idle, burst = full)
+  burst: number;
+  rate: number;
+  emission_interval: number;
+  tau: number;
+  remaining: number;
 }
