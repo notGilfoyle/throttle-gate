@@ -52,6 +52,7 @@ SIZE_PARAM: dict[AlgorithmKey, str] = {
     "sliding_log": "limit",
     "sliding_counter": "limit",
     "gcra": "burst",
+    "concurrency": "limit",
 }
 
 

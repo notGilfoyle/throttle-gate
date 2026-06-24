@@ -1,5 +1,6 @@
 import type { AlgoLatest } from "../../state/streamStore";
 import type { AlgorithmKey } from "../../types";
+import ConcurrencyViz from "./ConcurrencyViz";
 import FixedWindowViz from "./FixedWindowViz";
 import GcraViz from "./GcraViz";
 import LeakyBucketViz from "./LeakyBucketViz";
@@ -14,6 +15,7 @@ const REGISTRY: Record<AlgorithmKey, (props: { latest: AlgoLatest | undefined })
   sliding_log: SlidingLogViz,
   sliding_counter: SlidingCounterViz,
   gcra: GcraViz,
+  concurrency: ConcurrencyViz,
 };
 
 /** Render the visualizer for `algorithm`, fed the latest decision state. */
