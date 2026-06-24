@@ -181,6 +181,24 @@ traffic required (`POST /v1/replay`).
 
 ![Replay](docs/screenshots/replay.png)
 
+## Multi-tenancy & auth
+
+Every gateway concern — live session, policy, settings, alerts, history, limiter
+state, and the Prometheus metric labels — is isolated per **project** (tenant).
+Auth doubles as the tenant credential:
+
+- **Open mode** (default, zero-config): the project comes from an `X-Project`
+  header (default `default`). The dashboard has a project switcher.
+- **Keyed mode**: set `PROJECT_KEYS='{"tok-acme":"acme","tok-globex":"globex"}'`;
+  then `/v1/*` requires `Authorization: Bearer <token>`, and the token *determines*
+  the project (`401` otherwise). The dashboard's token field carries it.
+
+```bash
+# acme and globex never share a bucket, policy, or history — even for the same key
+curl -X POST localhost:8000/v1/check -H 'X-Project: acme'   -d '{"key":"u"}'
+curl -X POST localhost:8000/v1/check -H 'X-Project: globex' -d '{"key":"u"}'
+```
+
 ## Architecture
 
 ```
@@ -268,6 +286,7 @@ backend/app/
   history.py         Redis-backed traffic time series (GET /v1/history)
   alerts.py          per-key throttle webhook alerting
   replay.py          access-log parse + replay through algorithms (POST /v1/replay)
+  auth.py            per-project (tenant) resolution + bearer-token auth
   limiters/          one module per algorithm + Lua scripts
 frontend/src/
   api/               REST control + EventSource wrapper

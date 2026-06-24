@@ -51,9 +51,11 @@ class Session:
         *,
         live: bool = False,
         redis_client: redis.Redis | None = None,
+        project: str = "default",
     ) -> None:
         self.id = session_id
         self.config = config
+        self.project = project  # tenant this (live) session belongs to (M12)
         self.stats = StatsAggregator()
         self.subscribers: set[asyncio.Queue] = set()
         self.running = False
@@ -137,7 +139,7 @@ class Session:
                 da, dr = total_a - prev_a, total_r - prev_r
                 prev_a, prev_r = total_a, total_r
                 try:
-                    await history.record(self.redis, time.time(), da, dr)
+                    await history.record(self.redis, self.project, time.time(), da, dr)
                 except Exception:
                     pass  # history is best-effort; never disrupt the live session
 
@@ -187,15 +189,18 @@ class SessionManager:
     def get(self, session_id: str) -> Session | None:
         return self.sessions.get(session_id)
 
-    def live(self) -> Session:
-        """Get-or-create the persistent Live-mode session (M7). Generator-less;
-        fed by real `/v1/check` traffic and tuned via `PATCH /api/config`."""
-        session = self.sessions.get(LIVE_SESSION_ID)
+    def live(self, project: str = "default") -> Session:
+        """Get-or-create the persistent Live-mode session for `project` (M7/M12).
+        Generator-less; fed by real `/v1/check` traffic and tuned via
+        `PATCH /api/config`. Each project gets an isolated session (and thus its
+        own policy, settings, alerts, and stats)."""
+        sid = f"{LIVE_SESSION_ID}:{project}"
+        session = self.sessions.get(sid)
         if session is None:
             session = Session(
-                LIVE_SESSION_ID, RunConfig(), self.limiters, live=True, redis_client=self.redis
+                sid, RunConfig(), self.limiters, live=True, redis_client=self.redis, project=project
             )
-            self.sessions[LIVE_SESSION_ID] = session
+            self.sessions[sid] = session
             session.start()
         return session
 

@@ -37,6 +37,9 @@ export default function App() {
   const [obsOpen, setObsOpen] = useState(false);
   // Replay drawer (M12): replay an access log through the algorithms.
   const [replayOpen, setReplayOpen] = useState(false);
+  // Multi-tenancy (M12): the active project + optional auth token.
+  const [project, setProject] = useState("default");
+  const [token, setToken] = useState(() => localStorage.getItem("tg_token") ?? "");
 
   const live = mode === "live";
   const running = live ? liveSessionId !== null : sessionId !== null;
@@ -56,9 +59,34 @@ export default function App() {
 
   useEffect(() => () => store.disconnect(), [store]);
 
+  // Seed the auth token from storage once (M12).
+  useEffect(() => control.setToken(token || null), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const changeToken = (t: string) => {
+    setToken(t);
+    control.setToken(t || null);
+    if (t) localStorage.setItem("tg_token", t);
+    else localStorage.removeItem("tg_token");
+  };
+
   const onChange = (next: RunConfig) => {
     setConfig(next);
     if (activeSessionId) control.patchConfig(activeSessionId, next).catch((e) => setError(String(e)));
+  };
+
+  // Load the current project's live session + policy + settings and connect.
+  const loadLive = async () => {
+    store.disconnect();
+    const [{ session_id, config: liveConfig }, livePolicy, settings] = await Promise.all([
+      control.getLive(),
+      control.getPolicy(),
+      control.getSettings(),
+    ]);
+    setLiveSessionId(session_id);
+    setConfig(liveConfig); // reflect the limiter the server is actually using
+    setPolicy(livePolicy);
+    setFailOpen(settings.fail_open);
+    store.connect(session_id);
   };
 
   // Switch between synthetic (simulate) and real-traffic (live) modes.
@@ -69,17 +97,8 @@ export default function App() {
     setSessionId(null);
     if (next === "live") {
       try {
-        const [{ session_id, config: liveConfig }, livePolicy, settings] = await Promise.all([
-          control.getLive(),
-          control.getPolicy(),
-          control.getSettings(),
-        ]);
-        setLiveSessionId(session_id);
-        setConfig(liveConfig); // reflect the limiter the server is actually using
-        setPolicy(livePolicy);
-        setFailOpen(settings.fail_open);
+        await loadLive();
         setMode("live");
-        store.connect(session_id);
       } catch (e) {
         setError(String(e));
       }
@@ -87,6 +106,19 @@ export default function App() {
       setLiveSessionId(null);
       setConfig(defaultConfig(algorithms));
       setMode("simulate");
+    }
+  };
+
+  // Switch the active tenant (M12): re-point the live session at `project`.
+  const changeProject = async (p: string) => {
+    setProject(p);
+    control.setProject(p);
+    if (live) {
+      try {
+        await loadLive();
+      } catch (e) {
+        setError(String(e));
+      }
     }
   };
 
@@ -159,6 +191,21 @@ export default function App() {
           </div>
           {live && (
             <>
+              <input
+                value={project}
+                onChange={(e) => changeProject(e.target.value)}
+                title="Tenant / project (isolated limiter state, policy, history)"
+                className="w-28 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-xs text-zinc-200"
+                placeholder="project"
+              />
+              <input
+                value={token}
+                onChange={(e) => changeToken(e.target.value)}
+                type="password"
+                title="Bearer token (required when the gate runs with PROJECT_KEYS)"
+                className="w-24 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-xs text-zinc-200"
+                placeholder="token"
+              />
               <button
                 onClick={async () => {
                   const next = !failOpen;

@@ -28,23 +28,24 @@ def _escape(v: str) -> str:
 
 class Metrics:
     def __init__(self) -> None:
-        # (algorithm, rule, decision) -> count
-        self.requests: dict[tuple[str, str, str], int] = defaultdict(int)
-        # (algorithm, rule) -> summed cost charged
-        self.cost: dict[tuple[str, str], int] = defaultdict(int)
+        # (project, algorithm, rule, decision) -> count
+        self.requests: dict[tuple[str, str, str, str], int] = defaultdict(int)
+        # (project, algorithm, rule) -> summed cost charged
+        self.cost: dict[tuple[str, str, str], int] = defaultdict(int)
 
-    def record(self, algorithm: str, rule: str, decision: str, cost: int) -> None:
-        self.requests[(algorithm, rule, decision)] += 1
-        self.cost[(algorithm, rule)] += cost
+    def record(self, project: str, algorithm: str, rule: str, decision: str, cost: int) -> None:
+        self.requests[(project, algorithm, rule, decision)] += 1
+        self.cost[(project, algorithm, rule)] += cost
 
     def render(self) -> str:
         lines = [
             "# HELP throttlegate_requests_total Live requests evaluated by the gate.",
             "# TYPE throttlegate_requests_total counter",
         ]
-        for (algo, rule, decision), n in sorted(self.requests.items()):
+        for (project, algo, rule, decision), n in sorted(self.requests.items()):
             labels = (
-                f'algorithm="{_escape(algo)}",rule="{_escape(rule)}",decision="{_escape(decision)}"'
+                f'project="{_escape(project)}",algorithm="{_escape(algo)}",'
+                f'rule="{_escape(rule)}",decision="{_escape(decision)}"'
             )
             lines.append(f"throttlegate_requests_total{{{labels}}} {n}")
 
@@ -52,10 +53,9 @@ class Metrics:
             "# HELP throttlegate_cost_total Total cost charged by the gate.",
             "# TYPE throttlegate_cost_total counter",
         ]
-        for (algo, rule), n in sorted(self.cost.items()):
-            lines.append(
-                f'throttlegate_cost_total{{algorithm="{_escape(algo)}",rule="{_escape(rule)}"}} {n}'
-            )
+        for (project, algo, rule), n in sorted(self.cost.items()):
+            labels = f'project="{_escape(project)}",algorithm="{_escape(algo)}",rule="{_escape(rule)}"'
+            lines.append(f"throttlegate_cost_total{{{labels}}} {n}")
         return "\n".join(lines) + "\n"
 
 

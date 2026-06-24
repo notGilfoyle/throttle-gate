@@ -132,7 +132,7 @@ Differentiate beyond the five classics.
 
 *Exit:* at least one load-reactive limiter and GCRA shipped with visualizers. ✅
 
-## M12 — Onboarding & multi-tenancy  ·  **in progress**
+## M12 — Onboarding & multi-tenancy  ·  **done**
 
 Make it a product others can run.
 
@@ -143,11 +143,25 @@ Make it a product others can run.
   per algorithm. A zero-deploy on-ramp; no live traffic needed.
 - **"Recommend an algorithm"** ✅ (folded into replay) — the result includes a
   burstiness-aware recommendation (peak vs. average rps → which algorithms absorb
-  the spikes). A standalone questionnaire wizard could extend this later.
-- **Dashboard auth + multi-tenant** key/project scoping. *Remaining.*
+  the spikes).
+- **Auth + multi-tenancy** ✅ ([`auth.py`](../backend/app/auth.py)) — every gateway
+  concern (live session, policy, settings, alerts, history, limiter state, and the
+  metric labels) is keyed per **project**. Auth *is* the tenant credential:
+  `PROJECT_KEYS` (`{token: project}`) makes `/v1/*` require a bearer token that
+  determines the project (401 otherwise); with it unset the gate is open and the
+  project comes from an `X-Project` header (default `default`). The dashboard has a
+  project switcher + token field.
 
 *Exit:* a new user can evaluate algorithms on their own logs and run a scoped,
-authenticated dashboard.
+authenticated dashboard. ✅
+
+---
+
+**Roadmap complete (M1–M12).** Throttle-Gate went from a single-process teaching
+demo to a real, multi-tenant rate-limiting gateway: a decision API + six adapters,
+seven algorithms, a hot-reloadable policy engine with cost/deny/overrides,
+Prometheus metrics + persisted history + webhook alerts, log-replay onboarding,
+and per-project auth — all still driving the original live visualizers.
 
 ---
 
