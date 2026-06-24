@@ -65,6 +65,42 @@ try {
   await send("Page.enable");
   await sleep(1500); // let React mount + fetch /api/algorithms
 
+  // Live mode (M7): no synthetic generator — click the "Live traffic" toggle and
+  // let externally-driven /v1/check traffic (e.g. scripts/live_demo.py) feed it.
+  // Skips the Start flow entirely.
+  if (process.env.LIVE) {
+    await send("Runtime.evaluate", {
+      expression: `[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Live traffic')?.click()`,
+    });
+    await sleep(Number(process.env.WAIT ?? 4500)); // let real traffic animate
+
+    // Open the policy editor drawer (M9).
+    if (process.env.POLICY) {
+      await send("Runtime.evaluate", {
+        expression: `[...document.querySelectorAll('button')].find(b => b.textContent.trim().startsWith('Policies'))?.click()`,
+      });
+      await sleep(500);
+    }
+
+    if (process.env.INSPECT) {
+      await send("Runtime.evaluate", {
+        expression: `(() => {
+          const chip = [...document.querySelectorAll('button')].find(b => b.className.includes('h-4 w-4'));
+          chip?.click();
+        })()`,
+      });
+      await sleep(500);
+    }
+
+    const { data } = await send("Page.captureScreenshot", { format: "png" });
+    writeFileSync(OUT, Buffer.from(data, "base64"));
+    console.log("ERRORS:", errors.length ? errors : "none");
+    console.log("SAVED:", OUT);
+    ws.close();
+    chrome.kill();
+    process.exit(0);
+  }
+
   // Optionally select an algorithm in the dropdown before starting.
   const algo = process.env.ALGO;
   if (algo) {

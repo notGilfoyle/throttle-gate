@@ -1,0 +1,13 @@
+name = "throttle-gate-worker"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+[vars]
+# The gate must be reachable from Cloudflare's edge (a public URL / tunnel).
+GATE_URL = "https://your-throttle-gate.example.com/v1/check"
+FAIL_OPEN = "true"
+
+# Bind the Worker to your zone's traffic, e.g.:
+# [[routes]]
+# pattern = "api.example.com/*"
+# zone_name = "example.com"

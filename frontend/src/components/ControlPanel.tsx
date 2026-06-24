@@ -11,6 +11,10 @@ interface Props {
   algorithms: AlgorithmMeta[];
   config: RunConfig;
   running: boolean;
+  // Live mode (M7): real traffic drives the limiter, so the synthetic-traffic
+  // controls (compare, RPS, pattern, clients, distributed, start/stop) are hidden
+  // and only the algorithm + its params are tunable — applied live.
+  live?: boolean;
   onChange: (next: RunConfig) => void;
   onStart: () => void;
   onStop: () => void;
@@ -21,6 +25,7 @@ export default function ControlPanel({
   algorithms,
   config,
   running,
+  live = false,
   onChange,
   onStart,
   onStop,
@@ -56,6 +61,7 @@ export default function ControlPanel({
 
   return (
     <div className="flex flex-col gap-5">
+      {!live && (
       <div className="grid grid-cols-2 gap-2">
         <button
           onClick={() => toggleCompare(false)}
@@ -78,6 +84,7 @@ export default function ControlPanel({
           Compare
         </button>
       </div>
+      )}
 
       {compareMode ? (
         <div>
@@ -135,6 +142,8 @@ export default function ControlPanel({
         </>
       )}
 
+      {!live && (
+      <>
       <hr className="border-zinc-800" />
 
       <Slider
@@ -242,6 +251,8 @@ export default function ControlPanel({
           Reset
         </button>
       </div>
+      </>
+      )}
     </div>
   );
 }

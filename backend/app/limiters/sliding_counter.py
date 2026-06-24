@@ -13,7 +13,12 @@ class SlidingCounterLimiter(RateLimiter):
         self._script = self.load_script("sliding_counter.lua")
 
     async def evaluate(
-        self, client_id: str, params: SlidingCounterParams, now: float, node: str | None = None
+        self,
+        client_id: str,
+        params: SlidingCounterParams,
+        now: float,
+        node: str | None = None,
+        cost: int = 1,
     ) -> tuple[bool, dict, float | None]:
         window_s = params.window_s
         idx = int(now // window_s)
@@ -23,7 +28,7 @@ class SlidingCounterLimiter(RateLimiter):
 
         res = await self._script(
             keys=[self.state_key(client_id, node, idx), self.state_key(client_id, node, idx - 1)],
-            args=[params.limit, weight, int(window_s * 1000)],
+            args=[params.limit, weight, int(window_s * 1000), cost],
         )
         allowed = bool(int(res[0]))
         curr, prev = int(res[1]), int(res[2])

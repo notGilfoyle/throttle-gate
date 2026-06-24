@@ -6,17 +6,19 @@
 -- ARGV[1] = limit
 -- ARGV[2] = weight (0..1)
 -- ARGV[3] = window TTL in ms (key kept for 2 windows)
+-- ARGV[4] = cost (counter increment; usually 1)
 -- Returns { allowed (0/1), curr_count, prev_count, estimate_string }
 local limit  = tonumber(ARGV[1])
 local weight = tonumber(ARGV[2])
+local cost   = tonumber(ARGV[4]) or 1
 
 local curr = tonumber(redis.call('GET', KEYS[1]) or '0')
 local prev = tonumber(redis.call('GET', KEYS[2]) or '0')
 
 local estimate = curr + prev * weight
 local allowed = 0
-if estimate < limit then
-  curr = redis.call('INCR', KEYS[1])
+if estimate + cost <= limit then
+  curr = redis.call('INCRBY', KEYS[1], cost)
   redis.call('PEXPIRE', KEYS[1], tonumber(ARGV[3]) * 2)
   allowed = 1
   estimate = curr + prev * weight

@@ -6,19 +6,24 @@
 -- ARGV[2] = window_s
 -- ARGV[3] = limit
 -- ARGV[4] = unique member id for this request
+-- ARGV[5] = cost (slots this request needs; usually 1)
 -- Returns { allowed (0/1), count, timestamps_flat... }
 local now    = tonumber(ARGV[1])
 local window = tonumber(ARGV[2])
 local limit  = tonumber(ARGV[3])
+local cost   = tonumber(ARGV[5]) or 1
 
 redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now - window)
 local count = redis.call('ZCARD', KEYS[1])
 
 local allowed = 0
-if count < limit then
-  redis.call('ZADD', KEYS[1], now, ARGV[4])
+if count + cost <= limit then
+  -- Record `cost` entries (one slot each) at this timestamp.
+  for i = 0, cost - 1 do
+    redis.call('ZADD', KEYS[1], now, ARGV[4] .. ':' .. i)
+  end
   allowed = 1
-  count = count + 1
+  count = count + cost
 end
 redis.call('EXPIRE', KEYS[1], math.ceil(window) + 1)
 

@@ -1,0 +1,90 @@
+# Throttle-Gate Envoy adapter (M8) — rate-limit via the HTTP `ext_authz` filter.
+#
+# Envoy calls Throttle-Gate's GET /v1/authcheck before routing each request.
+# HTTP ext_authz treats ONLY 200 as allow; on any other status it forwards the
+# authz response (status + headers + body) straight to the client. So the
+# `X-Authz-Mode: envoy` header makes /v1/authcheck return 200 (allow) / 429
+# (throttle, with Retry-After / X-RateLimit-*) — the client gets a real 429.
+#
+# Every checked request also streams into the Throttle-Gate dashboard (Live mode).
+#
+#   docker run --rm -p 8080:8080 \
+#     -v "$PWD/adapters/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro" \
+#     envoyproxy/envoy:v1.31-latest
+#
+# Assumes your service is reachable as app:9000 and Throttle-Gate as
+# throttle-gate:8000 (e.g. docker-compose service names).
+
+static_resources:
+  listeners:
+    - name: ingress
+      address:
+        socket_address: { address: 0.0.0.0, port_value: 8080 }
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_http
+                route_config:
+                  name: local_route
+                  virtual_hosts:
+                    - name: app
+                      domains: ["*"]
+                      routes:
+                        - match: { prefix: "/" }
+                          route: { cluster: app_backend }
+                http_filters:
+                  - name: envoy.filters.http.ext_authz
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+                      transport_api_version: V3
+                      # Fail closed by default; set to true to fail open if the
+                      # gate is unreachable.
+                      failure_mode_allow: false
+                      http_service:
+                        server_uri:
+                          uri: throttle-gate:8000
+                          cluster: throttle_gate
+                          timeout: 1s
+                        # GET <prefix><original-path> on the authz cluster.
+                        path_prefix: "/v1/authcheck?route="
+                        authorization_request:
+                          headers_to_add:
+                            - { key: "X-Authz-Mode", value: "envoy" }
+                          # Forward the caller's API key (used as the limiter key).
+                          allowed_headers:
+                            patterns:
+                              - exact: "x-api-key"
+                        authorization_response:
+                          # Copy rate-limit headers from the authz reply to the
+                          # client (on both allow and the forwarded 429).
+                          allowed_client_headers:
+                            patterns:
+                              - exact: "retry-after"
+                              - exact: "x-ratelimit-limit"
+                              - exact: "x-ratelimit-remaining"
+                              - exact: "x-ratelimit-reset"
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+  clusters:
+    - name: app_backend
+      type: STRICT_DNS
+      load_assignment:
+        cluster_name: app_backend
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: { address: app, port_value: 9000 }
+    - name: throttle_gate
+      type: STRICT_DNS
+      load_assignment:
+        cluster_name: throttle_gate
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: { address: throttle-gate, port_value: 8000 }
