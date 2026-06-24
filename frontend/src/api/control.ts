@@ -15,6 +15,24 @@ import type {
 const BASE = "/api";
 const ROOT = ""; // backend root for the /v1/* live + policy endpoints
 
+// Tenancy + auth (M12): the project and (optional) bearer token sent on /v1 calls.
+let _project = "default";
+let _token: string | null = null;
+
+export function setProject(p: string): void {
+  _project = p.trim() || "default";
+}
+export function setToken(t: string | null): void {
+  _token = t && t.trim() ? t.trim() : null;
+}
+
+/** Headers for the per-tenant /v1 endpoints: project + optional bearer token. */
+function v1Headers(extra: Record<string, string> = {}): Record<string, string> {
+  const h: Record<string, string> = { "X-Project": _project, ...extra };
+  if (_token) h["Authorization"] = `Bearer ${_token}`;
+  return h;
+}
+
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
@@ -41,20 +59,20 @@ export async function startSession(
 }
 
 /** Live mode (M7): the persistent session real /v1/check traffic feeds. */
-export async function getLive(): Promise<{ session_id: string; config: RunConfig }> {
-  return json(await fetch(`${ROOT}/v1/live`));
+export async function getLive(): Promise<{ session_id: string; project: string; config: RunConfig }> {
+  return json(await fetch(`${ROOT}/v1/live`, { headers: v1Headers() }));
 }
 
 /** Policy engine (M9): the rules applied to live traffic. */
 export async function getPolicy(): Promise<Policy> {
-  return json(await fetch(`${ROOT}/v1/policy`));
+  return json(await fetch(`${ROOT}/v1/policy`, { headers: v1Headers() }));
 }
 
 export async function putPolicy(policy: Policy): Promise<Policy> {
   return json(
     await fetch(`${ROOT}/v1/policy`, {
       method: "PUT",
-      headers: { "content-type": "application/json" },
+      headers: v1Headers({ "content-type": "application/json" }),
       body: JSON.stringify(policy),
     }),
   );
@@ -62,14 +80,14 @@ export async function putPolicy(policy: Policy): Promise<Policy> {
 
 /** Engine settings (M8): fail-open vs fail-closed when the store is down. */
 export async function getSettings(): Promise<EngineSettings> {
-  return json(await fetch(`${ROOT}/v1/settings`));
+  return json(await fetch(`${ROOT}/v1/settings`, { headers: v1Headers() }));
 }
 
 export async function putSettings(settings: EngineSettings): Promise<EngineSettings> {
   return json(
     await fetch(`${ROOT}/v1/settings`, {
       method: "PUT",
-      headers: { "content-type": "application/json" },
+      headers: v1Headers({ "content-type": "application/json" }),
       body: JSON.stringify(settings),
     }),
   );
@@ -79,19 +97,19 @@ export async function putSettings(settings: EngineSettings): Promise<EngineSetti
 export async function getHistory(
   minutes = 30,
 ): Promise<{ points: HistoryPoint[]; bucket_s: number }> {
-  return json(await fetch(`${ROOT}/v1/history?minutes=${minutes}`));
+  return json(await fetch(`${ROOT}/v1/history?minutes=${minutes}`, { headers: v1Headers() }));
 }
 
 /** Observability (M10): per-key throttle alert config. */
 export async function getAlerts(): Promise<AlertConfig> {
-  return json(await fetch(`${ROOT}/v1/alerts`));
+  return json(await fetch(`${ROOT}/v1/alerts`, { headers: v1Headers() }));
 }
 
 export async function putAlerts(config: AlertConfig): Promise<AlertConfig> {
   return json(
     await fetch(`${ROOT}/v1/alerts`, {
       method: "PUT",
-      headers: { "content-type": "application/json" },
+      headers: v1Headers({ "content-type": "application/json" }),
       body: JSON.stringify(config),
     }),
   );
@@ -106,7 +124,7 @@ export async function replayLog(body: {
   return json(
     await fetch(`${ROOT}/v1/replay`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: v1Headers({ "content-type": "application/json" }),
       body: JSON.stringify(body),
     }),
   );

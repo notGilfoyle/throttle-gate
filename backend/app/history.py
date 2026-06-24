@@ -18,18 +18,23 @@ MAX_POINTS = 720  # ~1 hour at 5s
 _TTL_S = 90_000  # ~25h
 
 
-async def record(client: redis.Redis, ts: float, allowed: int, rejected: int) -> None:
+def _key(project: str) -> str:
+    return f"{HISTORY_KEY}:{project}"
+
+
+async def record(client: redis.Redis, project: str, ts: float, allowed: int, rejected: int) -> None:
     """Append one sampled point (allowed/rejected admitted since the last sample)."""
+    key = _key(project)
     member = f"{int(ts)}:{allowed}:{rejected}"
-    await client.zadd(HISTORY_KEY, {member: int(ts)})
+    await client.zadd(key, {member: int(ts)})
     # Keep only the most recent MAX_POINTS, and let the key self-expire when idle.
-    await client.zremrangebyrank(HISTORY_KEY, 0, -(MAX_POINTS + 1))
-    await client.expire(HISTORY_KEY, _TTL_S)
+    await client.zremrangebyrank(key, 0, -(MAX_POINTS + 1))
+    await client.expire(key, _TTL_S)
 
 
-async def read(client: redis.Redis, since_ts: float) -> list[dict]:
+async def read(client: redis.Redis, project: str, since_ts: float) -> list[dict]:
     """Points with score >= since_ts, oldest first."""
-    raw = await client.zrangebyscore(HISTORY_KEY, since_ts, "+inf")
+    raw = await client.zrangebyscore(_key(project), since_ts, "+inf")
     points: list[dict] = []
     for m in raw:
         try:

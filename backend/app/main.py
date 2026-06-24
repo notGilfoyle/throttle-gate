@@ -15,7 +15,7 @@ from typing import Literal
 
 import httpx
 import redis.asyncio as redis
-from fastapi import FastAPI, Header, HTTPException, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -31,6 +31,7 @@ from .config import (
 )
 from . import history, metrics, replay as replay_mod
 from .alerts import AlertConfig
+from .auth import auth_enabled, resolve_project
 from .limiters.base import Decision
 from .policy import SIZE_PARAM, Policy, resolve
 from .ratelimit_headers import ratelimit_headers
@@ -137,9 +138,14 @@ def _require_session(session_id: str):
 
 
 @app.get("/api/healthz")
-async def healthz() -> dict[str, str]:
+async def healthz() -> dict:
     pong = await app.state.redis.ping()
-    return {"status": "ok", "redis": "up" if pong else "down", "worker_id": WORKER_ID}
+    return {
+        "status": "ok",
+        "redis": "up" if pong else "down",
+        "worker_id": WORKER_ID,
+        "auth": auth_enabled(),
+    }
 
 
 @app.get("/metrics")
@@ -174,11 +180,12 @@ async def gate(req: GateRequest) -> dict:
 
 
 @app.get("/v1/live")
-async def live_info() -> dict:
-    """The Live session id + current limiter config. The dashboard subscribes to
-    `/api/stream?session_id=<id>` and tunes the limiter via `PATCH /api/config`."""
-    session = app.state.sessions.live()
-    return {"session_id": session.id, "config": session.config.model_dump()}
+async def live_info(project: str = Depends(resolve_project)) -> dict:
+    """The Live session id + config for the caller's project (M7/M12). The
+    dashboard subscribes to `/api/stream?session_id=<id>` and tunes the limiter
+    via `PATCH /api/config`."""
+    session = app.state.sessions.live(project)
+    return {"session_id": session.id, "project": project, "config": session.config.model_dump()}
 
 
 class EngineSettings(BaseModel):
@@ -200,7 +207,7 @@ def _degraded_decision(algo: AlgorithmKey, fail_open: bool) -> Decision:
 
 
 @app.post("/v1/replay")
-async def replay(req: ReplayRequest) -> dict:
+async def replay(req: ReplayRequest, project: str = Depends(resolve_project)) -> dict:
     """Replay an access log through limiters and compare allow/block counts (M12)."""
     events, skipped = replay_mod.parse_log(req.log, req.max_lines)
     if not events:
@@ -215,22 +222,22 @@ async def replay(req: ReplayRequest) -> dict:
 
 
 @app.get("/v1/history")
-async def get_history(minutes: float = 30) -> dict:
+async def get_history(minutes: float = 30, project: str = Depends(resolve_project)) -> dict:
     """Sampled live-traffic history (M10): allowed/rejected per ~5s bucket."""
-    app.state.sessions.live()  # ensure the sampler is running
+    app.state.sessions.live(project)  # ensure the sampler is running
     since = time.time() - minutes * 60
-    return {"points": await history.read(app.state.redis, since), "bucket_s": history.BUCKET_S}
+    return {"points": await history.read(app.state.redis, project, since), "bucket_s": history.BUCKET_S}
 
 
 @app.get("/v1/alerts")
-async def get_alerts() -> dict:
+async def get_alerts(project: str = Depends(resolve_project)) -> dict:
     """Per-key throttle alerting config (M10)."""
-    return app.state.sessions.live().alerter.config.model_dump()
+    return app.state.sessions.live(project).alerter.config.model_dump()
 
 
 @app.put("/v1/alerts")
-async def put_alerts(config: AlertConfig) -> dict:
-    app.state.sessions.live().alerter.config = config
+async def put_alerts(config: AlertConfig, project: str = Depends(resolve_project)) -> dict:
+    app.state.sessions.live(project).alerter.config = config
     return config.model_dump()
 
 
@@ -243,18 +250,19 @@ async def _fire_webhook(url: str, payload: dict) -> None:
 
 
 @app.get("/v1/settings")
-async def get_settings() -> dict:
+async def get_settings(project: str = Depends(resolve_project)) -> dict:
     """Engine settings for the Live session (M8/M9)."""
-    return {"fail_open": app.state.sessions.live().fail_open}
+    return {"fail_open": app.state.sessions.live(project).fail_open}
 
 
 @app.put("/v1/settings")
-async def put_settings(settings: EngineSettings) -> dict:
-    app.state.sessions.live().fail_open = settings.fail_open
+async def put_settings(settings: EngineSettings, project: str = Depends(resolve_project)) -> dict:
+    app.state.sessions.live(project).fail_open = settings.fail_open
     return {"fail_open": settings.fail_open}
 
 
 async def _live_check(
+    project: str,
     key: str,
     route: str,
     method: str = "GET",
@@ -265,11 +273,12 @@ async def _live_check(
     """Evaluate one real request against the Live limiter and stream it to the
     dashboard. Shared by the POST decision API and the GET auth endpoint.
 
-    Resolves the session policy (M9): the first matching rule selects the
-    algorithm, params, and cost (or hard-denies); unmatched traffic uses the
+    Scoped to `project` (M12): the session, policy, and limiter state are all the
+    tenant's. Resolves the session policy (M9): the first matching rule selects
+    the algorithm, params, and cost (or hard-denies); unmatched traffic uses the
     session default. Each rule has its own limiter state namespace (`scope`).
     """
-    session = app.state.sessions.live()
+    session = app.state.sessions.live(project)
     rule = resolve(session.policy, key, route, method)
     now = time.time()
 
@@ -297,7 +306,7 @@ async def _live_check(
             label = metrics.DEGRADED
         else:
             label = metrics.ALLOWED if decision.allowed else metrics.THROTTLED
-        metrics.METRICS.record(decision.algorithm, scope, label, eff_cost)
+        metrics.METRICS.record(project, decision.algorithm, scope, label, eff_cost)
         await session.record(event, [decision])
 
     # Hard deny (block list) — no limiter consulted.
@@ -330,9 +339,9 @@ async def _live_check(
 
     eff_cost = max(1, int(rule.cost if rule else cost))
     scope = rule.name if rule else "default"
-    # Namespace state per rule so different routes/tiers don't share a bucket.
+    # Namespace state per tenant + rule so projects/routes never share a bucket.
     try:
-        decision = await limiter.check(f"{scope}|{key}", params, now, cost=eff_cost)
+        decision = await limiter.check(f"{project}|{scope}|{key}", params, now, cost=eff_cost)
     except RedisError:
         # Limiter store unreachable: fall back to the engine's fail-open policy.
         decision = _degraded_decision(algo, session.fail_open)
@@ -349,20 +358,22 @@ async def _live_check(
 
 
 @app.get("/v1/policy")
-async def get_policy() -> dict:
+async def get_policy(project: str = Depends(resolve_project)) -> dict:
     """The Live session's active policy rules (M9)."""
-    return app.state.sessions.live().policy.model_dump()
+    return app.state.sessions.live(project).policy.model_dump()
 
 
 @app.put("/v1/policy")
-async def put_policy(policy: Policy) -> dict:
+async def put_policy(policy: Policy, project: str = Depends(resolve_project)) -> dict:
     """Replace the Live session's policy (M9). First matching rule wins."""
-    app.state.sessions.live().policy = policy
+    app.state.sessions.live(project).policy = policy
     return policy.model_dump()
 
 
 @app.post("/v1/check")
-async def check(req: CheckRequest, response: Response) -> dict:
+async def check(
+    req: CheckRequest, response: Response, project: str = Depends(resolve_project)
+) -> dict:
     """Rate-limit one real incoming request and stream it to the dashboard (M7).
 
     Returns the same shape a real gateway needs: `429` status + `Retry-After` /
@@ -370,7 +381,7 @@ async def check(req: CheckRequest, response: Response) -> dict:
     the user's service calls this per request (see `adapters/`).
     """
     decision, headers = await _live_check(
-        req.key, req.route, req.method, req.algorithm, req.params, req.cost
+        project, req.key, req.route, req.method, req.algorithm, req.params, req.cost
     )
     for name, value in headers.items():
         response.headers[name] = value
@@ -394,6 +405,7 @@ async def authcheck(
     x_original_uri: str | None = Header(default=None),
     x_original_method: str | None = Header(default=None),
     x_authz_mode: str | None = Header(default=None),
+    project: str = Depends(resolve_project),
 ) -> Response:
     """Auth-subrequest variant for proxy gateways (M8): nginx `auth_request` and
     Envoy `ext_authz`. They issue a subrequest and decide allow/deny from its
@@ -414,7 +426,7 @@ async def authcheck(
     resolved_key = key or x_ratelimit_key or x_api_key or "anonymous"
     resolved_route = route if route != "*" else (x_original_uri or "*")
     decision, headers = await _live_check(
-        resolved_key, resolved_route, x_original_method or "GET"
+        project, resolved_key, resolved_route, x_original_method or "GET"
     )
     if x_authz_mode == "envoy":
         status = 200 if decision.allowed else 429
