@@ -151,6 +151,23 @@ export interface AlertEvent {
   ts: number;
 }
 
+// Access-log replay (M12).
+export interface ReplayAlgoResult {
+  algorithm: AlgorithmKey;
+  allowed: number;
+  blocked: number;
+  total: number;
+  allow_pct: number;
+}
+
+export interface ReplayResult {
+  parsed: number;
+  skipped: number;
+  span_s: number;
+  results: ReplayAlgoResult[];
+  recommendation: string;
+}
+
 // Per-algorithm state shapes (PRD §4) for the typed visualizers.
 export interface TokenBucketState {
   tokens: number;

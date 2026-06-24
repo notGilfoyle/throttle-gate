@@ -29,7 +29,7 @@ from .config import (
     RunConfig,
     RunParams,
 )
-from . import history, metrics
+from . import history, metrics, replay as replay_mod
 from .alerts import AlertConfig
 from .limiters.base import Decision
 from .policy import SIZE_PARAM, Policy, resolve
@@ -101,6 +101,16 @@ class CheckRequest(BaseModel):
     cost: int = 1  # how much this request spends — >1 for expensive endpoints (M9)
     algorithm: AlgorithmKey | None = None
     params: dict | None = None
+
+
+class ReplayRequest(BaseModel):
+    """Replay an access log through limiters for offline comparison (M12)."""
+
+    log: str
+    algorithms: list[AlgorithmKey] = []  # empty → a default comparison set
+    params: RunParams | None = None
+    assumed_rps: float = 50  # spacing used when the log has no timestamps
+    max_lines: int = 5000
 
 
 class ConfigPatch(BaseModel):
@@ -187,6 +197,21 @@ def _degraded_decision(algo: AlgorithmKey, fail_open: bool) -> Decision:
         latency_ms=0.0,
         state={"degraded": True, "fail_open": fail_open},
     )
+
+
+@app.post("/v1/replay")
+async def replay(req: ReplayRequest) -> dict:
+    """Replay an access log through limiters and compare allow/block counts (M12)."""
+    events, skipped = replay_mod.parse_log(req.log, req.max_lines)
+    if not events:
+        raise HTTPException(status_code=400, detail="no parseable log lines")
+    algorithms = req.algorithms or replay_mod.DEFAULT_ALGOS
+    params = req.params or RunParams()
+    result = await replay_mod.replay(
+        app.state.sessions.limiters, events, algorithms, params, req.assumed_rps
+    )
+    result["skipped"] = skipped
+    return result
 
 
 @app.get("/v1/history")

@@ -5,6 +5,7 @@ import RequestStream from "./components/RequestStream";
 import DistributedPanel from "./components/DistributedPanel";
 import PolicyEditor from "./components/PolicyEditor";
 import ObservabilityDrawer from "./components/ObservabilityDrawer";
+import ReplayDrawer from "./components/ReplayDrawer";
 import RequestInspector from "./components/RequestInspector";
 import StatsPanel from "./components/StatsPanel";
 import Timeline from "./components/Timeline";
@@ -34,6 +35,8 @@ export default function App() {
   const [failOpen, setFailOpen] = useState(true);
   // Observability drawer (M10): history chart + alert config.
   const [obsOpen, setObsOpen] = useState(false);
+  // Replay drawer (M12): replay an access log through the algorithms.
+  const [replayOpen, setReplayOpen] = useState(false);
 
   const live = mode === "live";
   const running = live ? liveSessionId !== null : sessionId !== null;
@@ -135,6 +138,12 @@ export default function App() {
           Throttle-Gate <span className="text-zinc-500">— Rate Limiting Visualizer</span>
         </h1>
         <div className="flex items-center gap-4">
+          <button
+            onClick={() => setReplayOpen(true)}
+            className="rounded border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:border-zinc-600"
+          >
+            Replay log
+          </button>
           <div className="flex rounded border border-zinc-700 p-0.5 text-xs">
             {(["simulate", "live"] as const).map((m) => (
               <button
@@ -301,6 +310,8 @@ export default function App() {
       />
 
       <ObservabilityDrawer open={obsOpen} onClose={() => setObsOpen(false)} />
+
+      <ReplayDrawer open={replayOpen} algorithms={algorithms} onClose={() => setReplayOpen(false)} />
 
       {live && snapshot.alerts.length > 0 && (
         <div className="fixed bottom-4 right-4 z-50 w-80 rounded border border-red-800 bg-red-950/90 p-3 text-xs text-red-200 shadow-xl">

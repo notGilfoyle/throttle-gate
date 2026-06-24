@@ -171,6 +171,16 @@ fail-open behavior.
 
 ![Observability](docs/screenshots/observability.png)
 
+## Replay your own access log
+
+The zero-deploy on-ramp: paste an nginx/Apache access log (or `key,route` CSV)
+into the **Replay log** drawer and Throttle-Gate replays it through the algorithms
+you pick — *at the original timestamps* — then shows what each would have allowed
+vs. blocked, plus a burstiness-aware recommendation. No deployment, no live
+traffic required (`POST /v1/replay`).
+
+![Replay](docs/screenshots/replay.png)
+
 ## Architecture
 
 ```
@@ -257,6 +267,7 @@ backend/app/
   metrics.py         Prometheus /metrics counters for live traffic
   history.py         Redis-backed traffic time series (GET /v1/history)
   alerts.py          per-key throttle webhook alerting
+  replay.py          access-log parse + replay through algorithms (POST /v1/replay)
   limiters/          one module per algorithm + Lua scripts
 frontend/src/
   api/               REST control + EventSource wrapper
