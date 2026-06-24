@@ -6,12 +6,14 @@ the load generator; `/api/stream` carries the live decision/stats stream.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import Literal
 
+import httpx
 import redis.asyncio as redis
 from fastapi import FastAPI, Header, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,7 +29,8 @@ from .config import (
     RunConfig,
     RunParams,
 )
-from . import metrics
+from . import history, metrics
+from .alerts import AlertConfig
 from .limiters.base import Decision
 from .policy import SIZE_PARAM, Policy, resolve
 from .ratelimit_headers import ratelimit_headers
@@ -43,10 +46,12 @@ async def lifespan(app: FastAPI):
     app.state.redis = redis.from_url(REDIS_URL, decode_responses=True, max_connections=128)
     app.state.sessions = SessionManager(app.state.redis)
     await app.state.sessions.setup()
+    app.state.http = httpx.AsyncClient(timeout=5)  # outbound alert webhooks (M10)
     try:
         yield
     finally:
         await app.state.sessions.stop_all()
+        await app.state.http.aclose()
         await app.state.redis.aclose()
 
 
@@ -184,6 +189,34 @@ def _degraded_decision(algo: AlgorithmKey, fail_open: bool) -> Decision:
     )
 
 
+@app.get("/v1/history")
+async def get_history(minutes: float = 30) -> dict:
+    """Sampled live-traffic history (M10): allowed/rejected per ~5s bucket."""
+    app.state.sessions.live()  # ensure the sampler is running
+    since = time.time() - minutes * 60
+    return {"points": await history.read(app.state.redis, since), "bucket_s": history.BUCKET_S}
+
+
+@app.get("/v1/alerts")
+async def get_alerts() -> dict:
+    """Per-key throttle alerting config (M10)."""
+    return app.state.sessions.live().alerter.config.model_dump()
+
+
+@app.put("/v1/alerts")
+async def put_alerts(config: AlertConfig) -> dict:
+    app.state.sessions.live().alerter.config = config
+    return config.model_dump()
+
+
+async def _fire_webhook(url: str, payload: dict) -> None:
+    """Best-effort POST of an alert payload; never raises into the request path."""
+    try:
+        await app.state.http.post(url, json=payload)
+    except Exception:
+        pass
+
+
 @app.get("/v1/settings")
 async def get_settings() -> dict:
     """Engine settings for the Live session (M8/M9)."""
@@ -279,6 +312,14 @@ async def _live_check(
         # Limiter store unreachable: fall back to the engine's fail-open policy.
         decision = _degraded_decision(algo, session.fail_open)
     await stream(scope, decision)
+
+    # Throttle alerting (M10): a real 429 may trip a per-key threshold webhook.
+    if not decision.allowed and not decision.state.get("degraded"):
+        alert = session.alerter.record_throttle(key, now)
+        if alert:
+            session.emit({"type": "alert", **alert})
+            asyncio.create_task(_fire_webhook(session.alerter.config.webhook_url, alert))
+
     return decision, ratelimit_headers(decision)
 
 

@@ -82,6 +82,14 @@ try {
       await sleep(500);
     }
 
+    // Open the observability drawer (M10).
+    if (process.env.OBS) {
+      await send("Runtime.evaluate", {
+        expression: `[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Observability')?.click()`,
+      });
+      await sleep(1200); // let history fetch + chart render
+    }
+
     if (process.env.INSPECT) {
       await send("Runtime.evaluate", {
         expression: `(() => {

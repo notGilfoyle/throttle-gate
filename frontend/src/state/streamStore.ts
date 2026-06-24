@@ -6,6 +6,7 @@
 
 import { StreamConnection, type ConnStatus } from "../api/stream";
 import type {
+  AlertEvent,
   AlgoStats,
   DecisionEvent,
   HelloEvent,
@@ -35,6 +36,7 @@ export interface StreamSnapshot {
   statsByAlgo: Record<string, AlgoStats>;
   rpsIn: number;
   topKeys: TopKey[]; // live mode: top talkers / throttled keys
+  alerts: AlertEvent[]; // live mode: recent throttle alerts (newest first)
   latestByAlgo: Record<string, AlgoLatest>;
   statsHistory: StatsPoint[]; // rolling, for the timeline
 }
@@ -46,9 +48,12 @@ const EMPTY: StreamSnapshot = {
   statsByAlgo: {},
   rpsIn: 0,
   topKeys: [],
+  alerts: [],
   latestByAlgo: {},
   statsHistory: [],
 };
+
+const MAX_ALERTS = 20;
 
 export class StreamStore {
   private conn: StreamConnection | null = null;
@@ -58,6 +63,7 @@ export class StreamStore {
   // Working buffers, flushed once per frame.
   private pendingDecisions: DecisionEvent[] = [];
   private pendingStats: StatsEvent | null = null;
+  private pendingAlerts: AlertEvent[] = [];
   private pendingStatus: ConnStatus | null = null;
   private pendingWorkerId: string | null = null;
   private rafScheduled = false;
@@ -89,6 +95,10 @@ export class StreamStore {
         this.pendingStats = e;
         this.schedule();
       },
+      onAlert: (e) => {
+        this.pendingAlerts.push(e);
+        this.schedule();
+      },
       onStatus: (s) => {
         this.pendingStatus = s;
         this.schedule();
@@ -105,6 +115,7 @@ export class StreamStore {
   private clearBuffers(): void {
     this.pendingDecisions = [];
     this.pendingStats = null;
+    this.pendingAlerts = [];
     this.pendingStatus = null;
     this.pendingWorkerId = null;
   }
@@ -148,6 +159,11 @@ export class StreamStore {
       statsHistory = [...prev.statsHistory, point].slice(-MAX_HISTORY);
     }
 
+    let alerts = prev.alerts;
+    if (this.pendingAlerts.length) {
+      alerts = [...this.pendingAlerts].reverse().concat(prev.alerts).slice(0, MAX_ALERTS);
+    }
+
     this.snapshot = {
       status: this.pendingStatus ?? prev.status,
       workerId: this.pendingWorkerId ?? prev.workerId,
@@ -155,6 +171,7 @@ export class StreamStore {
       statsByAlgo: this.pendingStats?.per_algorithm ?? prev.statsByAlgo,
       rpsIn: this.pendingStats?.rps_in ?? prev.rpsIn,
       topKeys: this.pendingStats?.top_keys ?? prev.topKeys,
+      alerts,
       latestByAlgo,
       statsHistory,
     };

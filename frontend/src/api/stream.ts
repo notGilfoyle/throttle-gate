@@ -2,7 +2,7 @@
 // reporting (PRD §8.4). Native EventSource auto-retries, but we manage it so we
 // can surface status to the UI and bound the backoff.
 
-import type { DecisionEvent, HelloEvent, StatsEvent } from "../types";
+import type { AlertEvent, DecisionEvent, HelloEvent, StatsEvent } from "../types";
 
 export type ConnStatus = "connecting" | "open" | "reconnecting" | "closed";
 
@@ -10,6 +10,7 @@ export interface StreamHandlers {
   onHello?: (e: HelloEvent) => void;
   onDecision?: (e: DecisionEvent) => void;
   onStats?: (e: StatsEvent) => void;
+  onAlert?: (e: AlertEvent) => void;
   onStatus?: (s: ConnStatus) => void;
 }
 
@@ -49,6 +50,9 @@ export class StreamConnection {
     );
     es.addEventListener("stats", (ev) =>
       this.handlers.onStats?.(JSON.parse((ev as MessageEvent).data)),
+    );
+    es.addEventListener("alert", (ev) =>
+      this.handlers.onAlert?.(JSON.parse((ev as MessageEvent).data)),
     );
 
     es.onerror = () => {
