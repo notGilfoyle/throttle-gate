@@ -55,9 +55,10 @@ Make "plug it in" true for the common stacks.
   - Cloudflare Worker ✅ ([`adapters/cloudflare/`](../adapters/cloudflare/))
 - **Standalone sidecar bundle** ✅ ([`deploy/sidecar/`](../deploy/sidecar/)) — the
   engine + dashboard + Redis next to your app; documented compose + env config.
-- **Fail-open vs fail-closed** — every adapter does this per-call today
-  (`fail_open` / `failure_mode_allow`). *Deferred:* a first-class engine-side
-  setting (folds into M9's config work).
+- **Fail-open vs fail-closed** ✅ — both per-adapter (`fail_open` /
+  `failure_mode_allow`) **and** engine-side: when Redis is unreachable the gate
+  itself admits (degraded `200`) or rejects (`503`) per `GET/PUT /v1/settings`,
+  toggled live from the dashboard header.
 
 *Exit:* a non-Python service can be rate-limited with one snippet + a sidecar. ✅
 
@@ -74,17 +75,17 @@ Move from one global knob to real rules.
   (`PUT/GET /v1/policy`), **first match wins**, each selecting algorithm + params
   + cost. Each rule gets its own limiter state namespace, so `/login` and
   `/search` don't share a bucket. Hot-swapped live with no restart.
-- **Allow/deny lists** ✅ — a rule with `deny: true` hard-blocks (403); the
-  in-process + edge adapters now block on any non-2xx so denies propagate.
-
+- **Allow/deny lists & per-key burst overrides** ✅ — a rule with `deny: true`
+  hard-blocks (403, propagated by all adapters); `policy.overrides` maps a key →
+  multiplier on the matched limit, so a VIP key gets e.g. 3× capacity without a
+  separate rule.
 - **Dashboard policy editor** ✅
   ([`PolicyEditor.tsx`](../frontend/src/components/PolicyEditor.tsx)) — a slide-over
-  in Live mode to author/reorder/save rules (`GET`/`PUT /v1/policy`); no curl
-  needed.
+  in Live mode to author/reorder/save rules and per-key overrides
+  (`GET`/`PUT /v1/policy`); no curl needed.
 
 *Exit:* one deployment enforces different limits per route, method, and key,
 editable from the dashboard. ✅
-**Deferred:** per-key burst overrides; engine-side fail-open (from M8).
 
 ## M10 — Persistence & metrics
 

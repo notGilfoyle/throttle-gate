@@ -1,7 +1,7 @@
 // REST control-plane client (PRD §7.1). All paths are proxied to the backend
 // by the Vite dev server (see vite.config.ts).
 
-import type { AlgorithmMeta, Policy, RunConfig } from "../types";
+import type { AlgorithmMeta, EngineSettings, Policy, RunConfig } from "../types";
 
 const BASE = "/api";
 const ROOT = ""; // backend root for the /v1/* live + policy endpoints
@@ -47,6 +47,21 @@ export async function putPolicy(policy: Policy): Promise<Policy> {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(policy),
+    }),
+  );
+}
+
+/** Engine settings (M8): fail-open vs fail-closed when the store is down. */
+export async function getSettings(): Promise<EngineSettings> {
+  return json(await fetch(`${ROOT}/v1/settings`));
+}
+
+export async function putSettings(settings: EngineSettings): Promise<EngineSettings> {
+  return json(
+    await fetch(`${ROOT}/v1/settings`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(settings),
     }),
   );
 }

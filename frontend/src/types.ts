@@ -63,6 +63,12 @@ export interface PolicyRule {
 
 export interface Policy {
   rules: PolicyRule[];
+  // Per-key burst overrides: key → multiplier on the matched limit (M9).
+  overrides: Record<string, number>;
+}
+
+export interface EngineSettings {
+  fail_open: boolean; // admit vs reject 503 when the limiter store is down (M8)
 }
 
 // ── SSE events ────────────────────────────────────────────────────────────
@@ -84,7 +90,10 @@ export interface DecisionEvent {
   results: DecisionResult[];
   replica?: number; // distributed mode: which replica handled the request
   route?: string; // live mode: the route the real request hit
+  method?: string; // live mode: HTTP method (for per-method policy, M9)
   cost?: number; // live mode: how much the request spent (weighted cost, M9)
+  rule?: string; // live mode: the policy rule that matched (M9)
+  override?: number; // live mode: per-key burst multiplier applied (M9)
 }
 
 export interface AlgoStats {

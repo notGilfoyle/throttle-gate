@@ -26,8 +26,10 @@ export default function App() {
   const [mode, setMode] = useState<"simulate" | "live">("simulate");
   const [liveSessionId, setLiveSessionId] = useState<string | null>(null);
   // Live-traffic policy (M9) + the editor drawer.
-  const [policy, setPolicy] = useState<Policy>({ rules: [] });
+  const [policy, setPolicy] = useState<Policy>({ rules: [], overrides: {} });
   const [policyOpen, setPolicyOpen] = useState(false);
+  // Engine fail-open setting (M8): admit vs reject 503 when the store is down.
+  const [failOpen, setFailOpen] = useState(true);
 
   const live = mode === "live";
   const running = live ? liveSessionId !== null : sessionId !== null;
@@ -60,13 +62,15 @@ export default function App() {
     setSessionId(null);
     if (next === "live") {
       try {
-        const [{ session_id, config: liveConfig }, livePolicy] = await Promise.all([
+        const [{ session_id, config: liveConfig }, livePolicy, settings] = await Promise.all([
           control.getLive(),
           control.getPolicy(),
+          control.getSettings(),
         ]);
         setLiveSessionId(session_id);
         setConfig(liveConfig); // reflect the limiter the server is actually using
         setPolicy(livePolicy);
+        setFailOpen(settings.fail_open);
         setMode("live");
         store.connect(session_id);
       } catch (e) {
@@ -141,12 +145,34 @@ export default function App() {
             ))}
           </div>
           {live && (
-            <button
-              onClick={() => setPolicyOpen(true)}
-              className="rounded border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:border-zinc-600"
-            >
-              Policies{policy.rules.length > 0 && ` (${policy.rules.length})`}
-            </button>
+            <>
+              <button
+                onClick={async () => {
+                  const next = !failOpen;
+                  setFailOpen(next);
+                  try {
+                    await control.putSettings({ fail_open: next });
+                  } catch (e) {
+                    setFailOpen(!next);
+                    setError(String(e));
+                  }
+                }}
+                title="Behavior when the limiter store (Redis) is unreachable"
+                className={`rounded border px-2.5 py-1 text-xs ${
+                  failOpen
+                    ? "border-amber-600/60 text-amber-300"
+                    : "border-red-600/60 text-red-300"
+                }`}
+              >
+                Fail {failOpen ? "open" : "closed"}
+              </button>
+              <button
+                onClick={() => setPolicyOpen(true)}
+                className="rounded border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:border-zinc-600"
+              >
+                Policies{policy.rules.length > 0 && ` (${policy.rules.length})`}
+              </button>
+            </>
           )}
           <ConnBadge status={running ? snapshot.status : "idle"} workerId={snapshot.workerId} />
         </div>

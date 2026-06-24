@@ -48,6 +48,7 @@ export default function RequestInspector({ decision, algorithms, onClose }: Prop
           {decision.cost !== undefined && decision.cost !== 1 && (
             <Meta k="Cost" v={String(decision.cost)} />
           )}
+          {decision.override !== undefined && <Meta k="Override" v={`${decision.override}×`} />}
           {decision.replica !== undefined && <Meta k="Replica" v={`r${decision.replica}`} />}
           <Meta k="Algorithms" v={String(decision.results.length)} />
         </dl>
