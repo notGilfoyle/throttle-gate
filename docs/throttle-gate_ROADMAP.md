@@ -61,7 +61,7 @@ Make "plug it in" true for the common stacks.
 
 *Exit:* a non-Python service can be rate-limited with one snippet + a sidecar. ✅
 
-## M9 — Policy engine  ·  **done** (backend; dashboard UI deferred)
+## M9 — Policy engine  ·  **done**
 
 Move from one global knob to real rules.
 
@@ -77,9 +77,14 @@ Move from one global knob to real rules.
 - **Allow/deny lists** ✅ — a rule with `deny: true` hard-blocks (403); the
   in-process + edge adapters now block on any non-2xx so denies propagate.
 
-*Exit:* one deployment enforces different limits per route, method, and key. ✅
-**Deferred:** a dashboard UI to author policies (today via REST); per-key burst
-overrides; engine-side fail-open (from M8).
+- **Dashboard policy editor** ✅
+  ([`PolicyEditor.tsx`](../frontend/src/components/PolicyEditor.tsx)) — a slide-over
+  in Live mode to author/reorder/save rules (`GET`/`PUT /v1/policy`); no curl
+  needed.
+
+*Exit:* one deployment enforces different limits per route, method, and key,
+editable from the dashboard. ✅
+**Deferred:** per-key burst overrides; engine-side fail-open (from M8).
 
 ## M10 — Persistence & metrics
 

@@ -1,9 +1,10 @@
 // REST control-plane client (PRD §7.1). All paths are proxied to the backend
 // by the Vite dev server (see vite.config.ts).
 
-import type { AlgorithmMeta, RunConfig } from "../types";
+import type { AlgorithmMeta, Policy, RunConfig } from "../types";
 
 const BASE = "/api";
+const ROOT = ""; // backend root for the /v1/* live + policy endpoints
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -32,7 +33,22 @@ export async function startSession(
 
 /** Live mode (M7): the persistent session real /v1/check traffic feeds. */
 export async function getLive(): Promise<{ session_id: string; config: RunConfig }> {
-  return json(await fetch(`${BASE.replace("/api", "")}/v1/live`));
+  return json(await fetch(`${ROOT}/v1/live`));
+}
+
+/** Policy engine (M9): the rules applied to live traffic. */
+export async function getPolicy(): Promise<Policy> {
+  return json(await fetch(`${ROOT}/v1/policy`));
+}
+
+export async function putPolicy(policy: Policy): Promise<Policy> {
+  return json(
+    await fetch(`${ROOT}/v1/policy`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(policy),
+    }),
+  );
 }
 
 export async function stopSession(session_id: string): Promise<void> {

@@ -44,6 +44,27 @@ export interface RunConfig {
   distributed: DistributedConfig;
 }
 
+// ── Policy engine (M9) — mirrors backend/app/policy.py ──────────────────────
+
+export interface PolicyMatch {
+  route?: string | null; // glob, e.g. "/api/*"
+  methods?: string[] | null; // e.g. ["POST"]
+  keys?: string[] | null; // exact keys / tiers
+}
+
+export interface PolicyRule {
+  name: string;
+  match: PolicyMatch;
+  deny: boolean;
+  algorithm: AlgorithmKey | null; // null → live default
+  params: Record<string, number> | null;
+  cost: number;
+}
+
+export interface Policy {
+  rules: PolicyRule[];
+}
+
 // ── SSE events ────────────────────────────────────────────────────────────
 
 export interface DecisionResult {

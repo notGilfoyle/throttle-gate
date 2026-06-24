@@ -137,8 +137,10 @@ curl -X PUT localhost:8000/v1/policy -H 'content-type: application/json' -d '{
 - **Deny lists** — `"deny": true` blocks matching requests with `403`; the
   adapters propagate it (they pass through only on `2xx`).
 
-*(Policies are set via the API today; a dashboard editor is on the
-[roadmap](docs/throttle-gate_ROADMAP.md).)*
+Or author them in the dashboard — the **Policies** drawer (Live mode) edits,
+reorders, and saves rules without touching the API:
+
+![Policy editor](docs/screenshots/policy-editor.png)
 
 ## Architecture
 

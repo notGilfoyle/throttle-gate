@@ -3,6 +3,7 @@ import * as control from "./api/control";
 import ControlPanel from "./components/ControlPanel";
 import RequestStream from "./components/RequestStream";
 import DistributedPanel from "./components/DistributedPanel";
+import PolicyEditor from "./components/PolicyEditor";
 import RequestInspector from "./components/RequestInspector";
 import StatsPanel from "./components/StatsPanel";
 import Timeline from "./components/Timeline";
@@ -10,7 +11,7 @@ import Visualizer from "./components/visualizers";
 import { defaultConfig } from "./state/defaults";
 import { StreamStore } from "./state/streamStore";
 import { useStream } from "./state/useStream";
-import type { AlgorithmKey, AlgorithmMeta, DecisionEvent, RunConfig } from "./types";
+import type { AlgorithmKey, AlgorithmMeta, DecisionEvent, Policy, RunConfig } from "./types";
 
 export default function App() {
   const store = useRef(new StreamStore()).current;
@@ -24,6 +25,9 @@ export default function App() {
   // "simulate" = synthetic load generator (v1); "live" = real /v1/check traffic (M7).
   const [mode, setMode] = useState<"simulate" | "live">("simulate");
   const [liveSessionId, setLiveSessionId] = useState<string | null>(null);
+  // Live-traffic policy (M9) + the editor drawer.
+  const [policy, setPolicy] = useState<Policy>({ rules: [] });
+  const [policyOpen, setPolicyOpen] = useState(false);
 
   const live = mode === "live";
   const running = live ? liveSessionId !== null : sessionId !== null;
@@ -56,9 +60,13 @@ export default function App() {
     setSessionId(null);
     if (next === "live") {
       try {
-        const { session_id, config: liveConfig } = await control.getLive();
+        const [{ session_id, config: liveConfig }, livePolicy] = await Promise.all([
+          control.getLive(),
+          control.getPolicy(),
+        ]);
         setLiveSessionId(session_id);
         setConfig(liveConfig); // reflect the limiter the server is actually using
+        setPolicy(livePolicy);
         setMode("live");
         store.connect(session_id);
       } catch (e) {
@@ -132,6 +140,14 @@ export default function App() {
               </button>
             ))}
           </div>
+          {live && (
+            <button
+              onClick={() => setPolicyOpen(true)}
+              className="rounded border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:border-zinc-600"
+            >
+              Policies{policy.rules.length > 0 && ` (${policy.rules.length})`}
+            </button>
+          )}
           <ConnBadge status={running ? snapshot.status : "idle"} workerId={snapshot.workerId} />
         </div>
       </header>
@@ -227,6 +243,17 @@ export default function App() {
         decision={selected}
         algorithms={algorithms}
         onClose={() => setSelected(null)}
+      />
+
+      <PolicyEditor
+        open={policyOpen}
+        algorithms={algorithms}
+        policy={policy}
+        onClose={() => setPolicyOpen(false)}
+        onSave={async (next) => {
+          const saved = await control.putPolicy(next);
+          setPolicy(saved);
+        }}
       />
 
       <div className="h-[180px] border-t border-zinc-800 px-4 py-2">

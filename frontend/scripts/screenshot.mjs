@@ -74,6 +74,14 @@ try {
     });
     await sleep(Number(process.env.WAIT ?? 4500)); // let real traffic animate
 
+    // Open the policy editor drawer (M9).
+    if (process.env.POLICY) {
+      await send("Runtime.evaluate", {
+        expression: `[...document.querySelectorAll('button')].find(b => b.textContent.trim().startsWith('Policies'))?.click()`,
+      });
+      await sleep(500);
+    }
+
     if (process.env.INSPECT) {
       await send("Runtime.evaluate", {
         expression: `(() => {
